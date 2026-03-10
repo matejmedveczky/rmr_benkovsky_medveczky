@@ -60,21 +60,21 @@ int robot::processThisRobot(const TKobukiData &robotdata)
     double wheelbase = 0.23;
     long double tick = robotCom.getTickToMeter();
 
-    static short x_old = 0;
-    static short y_old = 0;
-    static signed short angle_old = 0;
-    static short old_left_encoder = 0;
-    static short old_right_encoder = 0;
+    static double x_old = 0;
+    static double y_old = 0;
+    static double angle_old = 0;
+    static double old_left_encoder = 0;
+    static double old_right_encoder = 0;
 
-    short left_distance = tick*(old_left_encoder - robotdata.EncoderLeft);
-    short right_distance = tick*(old_right_encoder - robotdata.EncoderRight);
+    double left_distance = tick*(robotdata.EncoderLeft - old_left_encoder); // je to distance alebo rotation???
+    double right_distance = tick*(robotdata.EncoderRight - old_right_encoder);
 
-    signed short gyro_angle = robotdata.GyroAngle;
+    double gyro_angle = robotdata.GyroAngle;
 
-    short step_dist = (wheelbase*(left_distance+right_distance)/(2*(left_distance-right_distance)));
+    double step_dist = (wheelbase/2)*((left_distance+right_distance)/(left_distance-right_distance));
 
-    short x_new = x_old + step_dist * sin(gyro_angle) - sin(angle_old);
-    short y_new = y_old - step_dist * cos(gyro_angle) - cos(angle_old);
+    double x_new = x_old + step_dist * sin(gyro_angle) - sin(angle_old);
+    double y_new = y_old - step_dist * cos(gyro_angle) - cos(angle_old);
 
     x_old = x_new;
     y_old = y_new;
@@ -92,9 +92,10 @@ int robot::processThisRobot(const TKobukiData &robotdata)
     ///kazdy piaty krat, aby to ui moc nepreblikavalo..
     if(datacounter%5==0)
     {
-        cout << "Robot pos x/y";
-        cout << x_new;
-        cout << y_new;
+        cout << "\nRobot pos x/y/dist: ";
+        cout << x_new << " ";
+        cout << y_new << " ";
+        cout << step_dist;
         ///ak nastavite hodnoty priamo do prvkov okna,ako je to na tychto zakomentovanych riadkoch tak sa moze stat ze vam program padne
         // ui->lineEdit_2->setText(QString::number(robotdata.EncoderRight));
         //ui->lineEdit_3->setText(QString::number(robotdata.EncoderLeft));
