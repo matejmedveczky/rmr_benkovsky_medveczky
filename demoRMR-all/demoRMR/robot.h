@@ -43,14 +43,18 @@ signals:
 #endif
 private:
   /// toto su vase premenne na vasu odometriu
-  double x;
-  double y;
-  double fi;
+  double x = 0;
+  double y = 0;
+  double fi = 0;
   ///-----------------------------
   /// toto su rychlosti ktore sa nastavuju setSpeedVal a posielaju v
   /// processThisRobot
   double forwardspeed;  // mm/s
   double rotationspeed; // omega/s
+
+  double x_des = 1, y_des = 1;
+  double err_lin_prev = 0, err_ang_prev = 0;
+  double integral_lin = 0, integral_ang = 0;
 
   /// toto su callbacky co sa sa volaju s novymi datami
   int processThisLidar(const std::vector<LaserData> &laserData);

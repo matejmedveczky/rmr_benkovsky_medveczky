@@ -66,25 +66,76 @@ int robot::processThisRobot(const TKobukiData &robotdata)
     static double old_left_encoder = 0;
     static double old_right_encoder = 0;
 
-    double left_distance = tick*(robotdata.EncoderLeft - old_left_encoder); // je to distance alebo rotation???
+    double left_distance = tick*(robotdata.EncoderLeft - old_left_encoder);
     double right_distance = tick*(robotdata.EncoderRight - old_right_encoder);
 
+    old_left_encoder  = robotdata.EncoderLeft;
+    old_right_encoder = robotdata.EncoderRight;
+
     double gyro_angle = robotdata.GyroAngle;
-
-    double step_dist = (wheelbase/2)*((left_distance+right_distance)/(left_distance-right_distance));
-
-    double x_new = x_old + step_dist * sin(gyro_angle) - sin(angle_old);
-    double y_new = y_old - step_dist * cos(gyro_angle) - cos(angle_old);
-
-    x_old = x_new;
-    y_old = y_new;
+    double angle_change = gyro_angle - angle_old;
     angle_old = gyro_angle;
+
+    //double step_dist = (wheelbase/2)*((left_distance+right_distance)/(left_distance-right_distance));
+
+    double step_dist = (left_distance + right_distance) / 2.0;
+
+    //double x_new = x_old + step_dist * sin(gyro_angle) - sin(angle_old);
+    //double y_new = y_old - step_dist * cos(gyro_angle) - cos(angle_old);
+
+    //double x_new = x_old + step_dist * cos(gyro_angle);
+    //double y_new = y_old + step_dist * sin(gyro_angle);
+
+    //x_old = x_new;
+    //y_old = y_new;
+    //angle_old = gyro_angle;
 
     ///tu mozete robit s datami z robota
     ///
     /// max speed 400mm/s ideal 200mm/s
 
+    // --- fix odometry ---
+    double angle_rad = gyro_angle * M_PI / 180.0;
+    x += step_dist * cos(angle_rad);
+    y += step_dist * sin(angle_rad);
+    fi  = angle_rad;
 
+    // --- errors ---
+    double dx = x_des - x;
+    double dy = y_des - y;
+    double err_lin = sqrt(dx*dx + dy*dy);
+    double err_ang = atan2(dy, dx) - fi;
+
+    // normalize angle to [-pi, pi]
+    while(err_ang >  M_PI) err_ang -= 2*M_PI;
+    while(err_ang < -M_PI) err_ang += 2*M_PI;
+
+    // --- PID (dt is implicit — callback fires at fixed rate) ---
+    integral_lin += err_lin;
+    integral_ang += err_ang;
+
+    double Kp_lin=0.3,  Ki_lin=0.0001, Kd_lin=0.01;
+    double Kp_ang=1.2,  Ki_ang=0.0,    Kd_ang=0.01;
+
+    // double Kp_lin=2, Ki_lin=0.1, Kd_lin=0.5;
+
+    double v = Kp_lin*err_lin + Ki_lin*integral_lin + Kd_lin*(err_lin - err_lin_prev);
+    double w = Kp_ang*err_ang + Ki_ang*integral_ang + Kd_ang*(err_ang - err_ang_prev);
+
+    // couple them — slow down if misaligned
+    v *= std::max(0.0, cos(err_ang));
+
+    err_lin_prev = err_lin;
+    err_ang_prev = err_ang;
+
+    // stop when close enough
+    if(err_lin < 0.02) v = 0, w = 0; // 20mm tolerance
+
+    v = std::clamp(v * 1000.0, 0.0, 200.0); // mm/s, conservative max
+    w = std::clamp(w, -180.0, 180.0);              // deg/s
+    setSpeedVal(v, w);
+
+    setSpeedVal(v, w); // plugs into existing dispatch
 
 
 ///TU PISTE KOD... TOTO JE TO MIESTO KED NEVIETE KDE ZACAT,TAK JE TO NAOZAJ TU. AK AJ TAK NEVIETE, SPYTAJTE SA CVICIACEHO MA TU NATO STRING KTORY DA DO HLADANIA XXX
@@ -93,9 +144,12 @@ int robot::processThisRobot(const TKobukiData &robotdata)
     if(datacounter%5==0)
     {
         cout << "\nRobot pos x/y/dist: ";
-        cout << x_new << " ";
-        cout << y_new << " ";
+        cout << x << " ";
+        cout << y << " ";
         cout << step_dist;
+        cout << "\nCommands v/w: ";
+        cout << v << " ";
+        cout << w << " ";
         ///ak nastavite hodnoty priamo do prvkov okna,ako je to na tychto zakomentovanych riadkoch tak sa moze stat ze vam program padne
         // ui->lineEdit_2->setText(QString::number(robotdata.EncoderRight));
         //ui->lineEdit_3->setText(QString::number(robotdata.EncoderLeft));
