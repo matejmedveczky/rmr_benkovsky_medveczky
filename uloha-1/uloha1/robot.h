@@ -52,9 +52,11 @@ private:
   double forwardspeed;  // mm/s
   double rotationspeed; // omega/s
 
-  double x_des = 0.5, y_des = 0.5;
+  double x_des = 0.5, y_des = -0.5;
   double err_lin_prev = 0, err_ang_prev = 0;
-  double integral_lin = 0, integral_ang = 0;
+
+  double max_v_dt = 400/2;
+  // double integral_lin = 0, integral_ang = 0;
 
   /// toto su callbacky co sa sa volaju s novymi datami
   int processThisLidar(const std::vector<LaserData> &laserData);

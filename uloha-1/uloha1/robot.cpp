@@ -55,8 +55,10 @@ int robot::processThisRobot(const TKobukiData &robotdata)
     static double old_left_encoder  = 0;
     static double old_right_encoder = 0;
     static double angle_old         = 0;
+    static unsigned old_timestamp = 0;
+    static double prev_v=0;
+    static double prev_w;
 
-    // --- skip first tick to seed encoder and gyro baseline ---
     if(first_tick) {
         old_left_encoder  = robotdata.EncoderLeft;
         old_right_encoder = robotdata.EncoderRight;
@@ -65,53 +67,50 @@ int robot::processThisRobot(const TKobukiData &robotdata)
         return 0;
     }
 
-    // --- encoder deltas ---
-
     double delta_left  = robotdata.EncoderLeft  - old_left_encoder;
     double delta_right = robotdata.EncoderRight - old_right_encoder;
 
-    // handle 16-bit wraparound
+    unsigned timestamp = robotdata.timestamp;
+    unsigned dt = timestamp - old_timestamp;
+
     if(delta_left  >  32767) delta_left  -= 65536;
     if(delta_left  < -32767) delta_left  += 65536;
     if(delta_right >  32767) delta_right -= 65536;
     if(delta_right < -32767) delta_right += 65536;
 
-    double left_distance  = tick * (robotdata.EncoderLeft  - old_left_encoder);
-    double right_distance = tick * (robotdata.EncoderRight - old_right_encoder);
+    //double left_distance  = tick * (robotdata.EncoderLeft  - old_left_encoder);
+    //double right_distance = tick * (robotdata.EncoderRight - old_right_encoder);
+
+    double left_distance  = tick * delta_left;
+    double right_distance = tick * delta_right;
+
     old_left_encoder  = robotdata.EncoderLeft;
     old_right_encoder = robotdata.EncoderRight;
 
-    // --- cumulative heading via delta (survives ±180 gyro wrap) ---
     double gyro_now  = robotdata.GyroAngle / 100.0;
     double delta_deg = gyro_now - angle_old;
     angle_old        = gyro_now;
 
-    // normalize delta to [-180, 180] before converting
     while(delta_deg >  180.0) delta_deg -= 360.0;
     while(delta_deg < -180.0) delta_deg += 360.0;
 
     fi += delta_deg * M_PI / 180.0;
 
-    // keep fi in [-pi, pi]
     while(fi >  M_PI) fi -= 2*M_PI;
     while(fi < -M_PI) fi += 2*M_PI;
 
-    // --- odometry ---
     double step_dist = (left_distance + right_distance) / 2.0;
     x += step_dist * cos(fi);
     y += step_dist * sin(fi);
 
-    // --- errors ---
     double dx      = x_des - x;
     double dy      = y_des - y;
     double err_lin = sqrt(dx*dx + dy*dy);
     double err_ang = atan2(dy, dx) - fi;
 
-    // normalize to [-pi, pi]
     while(err_ang >  M_PI) err_ang -= 2*M_PI;
     while(err_ang < -M_PI) err_ang += 2*M_PI;
 
-    // --- P-only controller (rotate-then-drive) ---
     double Kp_lin = 0.3;
     double Kp_ang = 1.2;
 
@@ -120,15 +119,34 @@ int robot::processThisRobot(const TKobukiData &robotdata)
     if(err_lin < 0.02) {
         v = 0;
         w = 0;
-    } else if(std::abs(err_ang) > 1) {
-        v = 0;
-        w = Kp_ang * err_ang;
     } else {
-        v = Kp_lin * err_lin * 1000.0;
-        w = Kp_ang * err_ang;
+        if(std::abs(err_ang) > 1) {
+            v = 0;
+            w = Kp_ang * err_ang;
+        }
+        else {
+            v = Kp_lin * err_lin * 1000.0;
+            w = Kp_ang * err_ang;
+        }
+
+        if ((v - prev_v) > 5){
+            v = prev_v + 5;
+        }
+
+        if ((  w-prev_w) > 0.3){
+            w = prev_w + 0.3;
+        }
+        else if ((  w-prev_w) < -0.3){
+            w = prev_w - 0.3;
+        }
     }
 
-    v = std::clamp(v,  0.0, 200.0); // mm/s
+    // dt = 40hz
+
+    prev_v = v;
+    prev_w = w;
+
+    v = std::clamp(v,  -400.0, 400.0); // mm/s
     w = std::clamp(w, -2.0,   2.0); // rad/s
 
     setSpeedVal(v, w);
@@ -138,7 +156,7 @@ int robot::processThisRobot(const TKobukiData &robotdata)
         cout << "\nRobot pos x/y/angle: " << x << " " << y << " " << fi;
         cout << "\nGyro raw/delta_deg:  " << gyro_now << " " << delta_deg;
         cout << "\nErrors lin/ang:      " << err_lin  << " " << err_ang;
-        cout << "\nCommands v/w:        " << v        << " " << w;
+        cout << "\nCommands v/w:        " << v        << " " << w<<std::endl;
         emit publishPosition(x, y, fi);
     }
 
