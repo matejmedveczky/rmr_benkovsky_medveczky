@@ -32,6 +32,8 @@ public:
   void setSpeedVal(double forw, double rots);
   // tato funkcia fyzicky posiela hodnoty do robota
   void setSpeed(double forw, double rots);
+  void resetRobot();
+  void returnHome();
 signals:
   void publishPosition(double x, double y, double z);
   void publishLidar(const std::vector<LaserData> &lidata);
@@ -46,13 +48,23 @@ private:
   double x = 0;
   double y = 0;
   double fi = 0;
+
+  bool first_tick = true;
+  double old_left_encoder = 0.0;
+  double old_right_encoder = 0.0;
+  double angle_old = 0.0;
+  unsigned old_timestamp = 0.0;
+
+  double prev_v = 0.0;
+  double prev_w = 0.0;
   ///-----------------------------
   /// toto su rychlosti ktore sa nastavuju setSpeedVal a posielaju v
   /// processThisRobot
   double forwardspeed;  // mm/s
   double rotationspeed; // omega/s
 
-  double x_des = 0.5, y_des = -0.5;
+  double x_des = 0;
+  double y_des = 1.0;
   double err_lin_prev = 0, err_ang_prev = 0;
 
   double max_v_dt = 400/2;

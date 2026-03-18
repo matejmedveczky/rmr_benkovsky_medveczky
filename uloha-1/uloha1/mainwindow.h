@@ -55,6 +55,10 @@ private slots:
 
   void on_pushButton_4_clicked();
 
+  void on_pushButton_8_clicked();
+
+  void on_pushButton_10_clicked();
+
   void on_pushButton_clicked();
 
   int paintThisLidar(const std::vector<LaserData> &laserData);

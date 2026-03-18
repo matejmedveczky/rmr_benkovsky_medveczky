@@ -1,4 +1,4 @@
-#include "robot.h"
+ #include "robot.h"
 #include <cmath>
 
 robot::robot(QObject *parent) : QObject(parent)
@@ -16,6 +16,21 @@ void robot::initAndStartRobot(std::string ipaddress)
 {
     forwardspeed=0;
     rotationspeed=0;
+
+    first_tick = true;
+    old_left_encoder = 0.0;
+    old_right_encoder = 0.0;
+    angle_old = 0.0;
+    old_timestamp = 0.0;
+
+    x = 0;
+    y = 0;
+    fi = 0;
+
+    prev_v = 0.0;
+    prev_w = 0.0;
+
+
     robotCom.setLaserParameters([this](const std::vector<LaserData>& dat)->int{return processThisLidar(dat);},ipaddress);
     robotCom.setRobotParameters([this](const TKobukiData& dat)->int{return processThisRobot(dat);},ipaddress);
 #ifndef DISABLE_OPENCV
@@ -47,22 +62,25 @@ void robot::setSpeed(double forw, double rots)
     useDirectCommands=1;
 }
 
+void robot::resetRobot(){
+    x = 0;
+    y = 0;
+    fi = 0;
+}
+
+void robot::returnHome(){
+    x_des = 0.0;
+    y_des = 0.0;
+}
+
 int robot::processThisRobot(const TKobukiData &robotdata)
 {
     long double tick = robotCom.getTickToMeter();
 
-    static bool   first_tick        = true;
-    static double old_left_encoder  = 0;
-    static double old_right_encoder = 0;
-    static double angle_old         = 0;
-    static unsigned old_timestamp = 0;
-    static double prev_v=0;
-    static double prev_w;
-
     if(first_tick) {
         old_left_encoder  = robotdata.EncoderLeft;
         old_right_encoder = robotdata.EncoderRight;
-        angle_old         = robotdata.GyroAngle;
+        angle_old         = robotdata.GyroAngle/100;
         first_tick        = false;
         return 0;
     }
@@ -120,7 +138,7 @@ int robot::processThisRobot(const TKobukiData &robotdata)
         v = 0;
         w = 0;
     } else {
-        if(std::abs(err_ang) > 1) {
+        if(std::abs(err_ang) > 0.9) {
             v = 0;
             w = Kp_ang * err_ang;
         }
@@ -133,10 +151,10 @@ int robot::processThisRobot(const TKobukiData &robotdata)
             v = prev_v + 5;
         }
 
-        if ((  w-prev_w) > 0.3){
+        if ((w - prev_w) > 0.3){
             w = prev_w + 0.3;
         }
-        else if ((  w-prev_w) < -0.3){
+        else if ((w - prev_w) < -0.3){
             w = prev_w - 0.3;
         }
     }
