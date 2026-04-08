@@ -2,6 +2,7 @@
 #include "ui_mainwindow.h"
 #include <QPainter>
 #include <math.h>
+#include <sstream>
 ///TOTO JE DEMO PROGRAM...AK SI HO NASIEL NA PC V LABAKU NEPREPISUJ NIC,ALE SKOPIRUJ SI MA NIEKAM DO INEHO FOLDERA
 /// AK HO MAS Z GITU A ROBIS NA LABAKOVOM PC, TAK SI HO VLOZ DO FOLDERA KTORY JE JASNE ODLISITELNY OD TVOJICH KOLEGOV
 /// NASLEDNE V POLOZKE Projects SKONTROLUJ CI JE VYPNUTY shadow build...
@@ -113,6 +114,8 @@ void  MainWindow::setUiValues(double robotX,double robotY,double robotFi)
 
 void MainWindow::on_pushButton_9_clicked() //start button
 {
+    on_pushButton_11_clicked();
+
     //ziskanie joystickov
 
 
@@ -145,6 +148,16 @@ void MainWindow::on_pushButton_9_clicked() //start button
     }
     );
 #endif
+}
+
+void MainWindow::on_pushButton_11_clicked()
+{
+    double xDes = 0.0;
+    double yDes = 0.0;
+    std::stringstream desiredStream(ui->lineEdit->text().toStdString());
+    if (desiredStream >> xDes >> yDes) {
+        _robot.setDesiredPosition(xDes, yDes);
+    }
 }
 
 void MainWindow::on_pushButton_2_clicked() //forward
@@ -187,6 +200,12 @@ void MainWindow::on_pushButton_10_clicked() //reset
 {
     _robot.returnHome();
 }
+
+void MainWindow::on_pushButton_12_clicked() //save map
+{
+    _robot.saveMap("C:/Users/matej/OneDrive/Dokumenty/STU FEI/Ing/RMR/uloha-1/uloha1/map.txt");
+}
+
 
 void MainWindow::on_pushButton_clicked()
 {

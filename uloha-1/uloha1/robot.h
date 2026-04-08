@@ -3,6 +3,9 @@
 #include "librobot/librobot.h"
 #include <QObject>
 #include <QWidget>
+#include <deque>
+#include <cmath>
+#include <fstream>
 
 #ifndef DISABLE_OPENCV
 #include "opencv2/core/utility.hpp"
@@ -19,9 +22,10 @@ Q_DECLARE_METATYPE(cv::Mat)
 Q_DECLARE_METATYPE(skeleton)
 #endif
 Q_DECLARE_METATYPE(std::vector<LaserData>)
+Q_DECLARE_METATYPE(int[280][280])
 class robot : public QObject {
   Q_OBJECT
-public:
+ public:
   explicit robot(QObject *parent = nullptr);
 
   void initAndStartRobot(std::string ipaddress);
@@ -32,18 +36,21 @@ public:
   void setSpeedVal(double forw, double rots);
   // tato funkcia fyzicky posiela hodnoty do robota
   void setSpeed(double forw, double rots);
+  void saveMap(const std::string& filename);
   void resetRobot();
   void returnHome();
-signals:
+  void setDesiredPosition(double xDes, double yDes);
+ signals:
   void publishPosition(double x, double y, double z);
   void publishLidar(const std::vector<LaserData> &lidata);
+  void publishMap(int grid[280][280]);
 #ifndef DISABLE_OPENCV
   void publishCamera(const cv::Mat &camframe);
 #endif
 #ifndef DISABLE_SKELETON
   void publishSkeleton(const skeleton &skeledata);
 #endif
-private:
+ private:
   /// toto su vase premenne na vasu odometriu
   double x = 0;
   double y = 0;
@@ -63,8 +70,8 @@ private:
   double forwardspeed;  // mm/s
   double rotationspeed; // omega/s
 
-  double x_des = 0;
-  double y_des = 1.0;
+  double x_des;
+  double y_des;
   double err_lin_prev = 0, err_ang_prev = 0;
 
   double max_v_dt = 400/2;
@@ -98,6 +105,36 @@ private:
   skeleton skeleJoints;
 #endif
   int useDirectCommands;
+
+  // Occupancy grid mapping members
+ public:
+  // Occupancy states
+  enum CellState { UNKNOWN = 0, FREE = 1, OCCUPIED = 2 };
+
+  // Pose history for laser interpolation
+  struct PoseStamp { double x, y, fi; unsigned timestamp; };
+  std::deque<PoseStamp> poseHistory;
+
+  // Occupancy grid
+  static const int    GRID_SIZE = 280;
+  static constexpr double CELL_SIZE = 0.05;
+  int grid[GRID_SIZE][GRID_SIZE];
+
+  static constexpr float L_HIT =  0.85f;
+  static constexpr float L_FREE  =  0.40f;
+  static constexpr float L_MIN   = -10.0f;
+  static constexpr float L_MAX   =  10.0f;
+  static constexpr float THRESHOLD_OCC  =  0.5f;
+  static constexpr float THRESHOLD_FREE = -0.5f;
+
+  double gridOriginX = -(GRID_SIZE * CELL_SIZE / 2.0);
+  double gridOriginY = -(GRID_SIZE * CELL_SIZE / 2.0);
+
+  // New method declarations
+  PoseStamp interpolatePose(unsigned timestamp);
+  void worldToGrid(double wx, double wy, int &col, int &row);
+  void bresenham(int c0, int r0, int c1, int r1);
+  void updateGrid(const LaserData& point, const PoseStamp& pose);
 };
 
 #endif // ROBOT_H
