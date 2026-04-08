@@ -148,7 +148,7 @@ void robot::setDesiredPosition(double xDes, double yDes)
      x += step_dist * cos(fi);
      y += step_dist * sin(fi);
 
-     PoseStamp ps = {x, y, fi, robotdata.timestamp};
+     PoseStamp ps = {x, y, fi, robotdata.synctimestamp};
      poseHistory.push_back(ps);
      if (poseHistory.size() > 200)
          poseHistory.pop_front();
@@ -161,7 +161,7 @@ void robot::setDesiredPosition(double xDes, double yDes)
      while(err_ang >  M_PI) err_ang -= 2*M_PI;
      while(err_ang < -M_PI) err_ang += 2*M_PI;
 
-     double Kp_lin = 0.3;
+     double Kp_lin = 1; // 0.3
      double Kp_ang = 1.2;
 
      double v = 0, w = 0;
@@ -226,17 +226,15 @@ void robot::setDesiredPosition(double xDes, double yDes)
 
  int robot::processThisLidar(const std::vector<LaserData>& laserData)
  {
-     copyOfLaserData = laserData;
-     emit publishLidar(copyOfLaserData);
 
      if (poseHistory.empty()) return 0;
 
      qDebug() << "Lidar called, poses:" << poseHistory.size()
-              << "points:" << laserData.size();
+              << "points:" << copyOfLaserData.size();
 
-     for (const auto& point : laserData) {
+     for (const auto& point : copyOfLaserData) {
          double dist_m = point.scanDistance / 1000.0;
-         if (dist_m < 0.05 || dist_m > 5.0) continue;
+         if (dist_m < 0.05 || dist_m > 2.5 || (dist_m > 0.5 && dist_m < 0.7)) continue;
          PoseStamp pose = interpolatePose(point.timestamp);
          updateGrid(point, pose);
      }
@@ -249,6 +247,9 @@ void robot::setDesiredPosition(double xDes, double yDes)
      qDebug() << "Occupied cells:" << occupiedCount;
 
      emit publishMap(grid);
+     copyOfLaserData = laserData;
+     emit publishLidar(copyOfLaserData);
+
      return 0;
  }
 
@@ -271,7 +272,6 @@ void robot::setDesiredPosition(double xDes, double yDes)
  }
  #endif
 
- // Occupancy grid mapping methods
 
  void robot::worldToGrid(double wx, double wy, int &col, int &row)
  {
@@ -324,8 +324,8 @@ void robot::setDesiredPosition(double xDes, double yDes)
  {
      double dist_m = point.scanDistance / 1000.0;
      double global_angle = pose.fi - (point.scanAngle * M_PI / 180.0);
-     double x_gi = pose.x + dist_m * std::cos(global_angle);  // ← was point.scanDistance
-     double y_gi = pose.y + dist_m * std::sin(global_angle);  // ← was point.scanDistance
+     double x_gi = pose.x + dist_m * std::cos(global_angle);
+     double y_gi = pose.y + dist_m * std::sin(global_angle);
 
      int col_r, row_r, col_h, row_h;
      worldToGrid(pose.x, pose.y, col_r, row_r);
