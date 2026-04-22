@@ -1,6 +1,7 @@
  #include "robot.h"
  #include <cmath>
  #include <cstring>
+ #include <queue>
 
  robot::robot(QObject *parent) : QObject(parent)
  {
@@ -71,6 +72,111 @@
      file.close();
  }
 
+ void robot::loadMap(const std::string& filename)
+ {
+     cout << "Loading Map\n";
+     std::ifstream file(filename);
+     if (!file.is_open()) return;
+
+     for (int r = 0; r < GRID_SIZE; r++) {
+         for (int c = 0; c < GRID_SIZE; c++) {
+             file >> grid[r][c];
+         }
+     }
+     cout << "Map Loaded\n\n";
+     file.close();
+ }
+
+ void robot::bufferMap()
+ {
+     for (int r = 1; r < GRID_SIZE - 1; r++) {
+         for (int c = 1; c < GRID_SIZE - 1; c++) {
+             if (grid[r][c] != FREE) continue;
+
+             vector<int> arr = occDir(r, c);
+
+             for(int i = 0; i < 4; i++){
+                 if(arr[i] != 1) continue;
+
+                 switch(i){
+                 case 0: // down
+                     for(int p = 1; p < BUFFER_SIZE && r + p < GRID_SIZE; p++){
+                         if (grid[r + p][c] == FREE) grid[r + p][c] = BUFFER;
+                     }
+                     break;
+                 case 1: // right
+                     for(int p = 1; p < BUFFER_SIZE && c + p < GRID_SIZE; p++){
+                         if (grid[r][c + p] == FREE) grid[r][c + p] = BUFFER;
+                     }
+                     break;
+                 case 2: // up
+                     for(int p = 1; p < BUFFER_SIZE && r - p >= 0; p++){
+                         if (grid[r - p][c] == FREE) grid[r - p][c] = BUFFER;
+                     }
+                     break;
+                 case 3: // left
+                     for(int p = 1; p < BUFFER_SIZE && c - p >= 0; p++){
+                         if (grid[r][c - p] == FREE) grid[r][c - p] = BUFFER;
+                     }
+                     break;
+                 }
+             }
+         }
+     }
+ }
+
+ void robot::floodMap(int des_x, int des_y, int start_x, int start_y){
+     bufferMap();
+
+     queue<pair<int, int>> q;
+     grid[des_x][des_y] = 4;
+     q.push({des_x, des_y});
+
+     while (!q.empty()) {
+         auto [r, c] = q.front();
+         q.pop();
+
+         int current_value = grid[r][c];
+
+         int dr[] = {-1, 1, 0, 0, -1, -1, 1, 1};
+         int dc[] = {0, 0, -1, 1, -1, 1, -1, 1};
+
+         for (int i = 0; i < 8; i++) {
+             int nr = r + dr[i];
+             int nc = c + dc[i];
+
+             if (nr >= 0 && nr < GRID_SIZE && nc >= 0 && nc < GRID_SIZE) {
+                 if (grid[nr][nc] == FREE) {
+                     grid[nr][nc] = current_value + 1;
+                     q.push({nr, nc});
+
+                     if (nr == start_x && nc == start_y) {
+                         return;
+                     }
+                 }
+             }
+         }
+     }
+ }
+
+ vector<int> robot::occDir(int r, int c){
+     vector<int> arr = {0, 0, 0, 0};
+
+     if(grid[r - 1][c] == OCCUPIED){
+         arr[0] = 1;
+     }
+     if(grid[r][c - 1] == OCCUPIED){
+         arr[1] = 1;
+     }
+     if(grid[r + 1][c] == OCCUPIED){
+         arr[2] = 1;
+     }
+     if(grid[r][c + 1] == OCCUPIED){
+         arr[3] = 1;
+     }
+     return arr;
+ }
+
  void robot::setSpeed(double forw, double rots)
  {
      if(forw==0 && rots!=0)
@@ -97,11 +203,73 @@
      y_des = 0.0;
  }
 
-void robot::setDesiredPosition(double xDes, double yDes)
-{
-    x_des = xDes;
-    y_des = yDes;
-}
+ void robot::setDesiredPosition(double xDes, double yDes)
+ {
+     double x_offset = 140 * CELL_SIZE;
+     double y_offset = 140 * CELL_SIZE;
+
+     int x_des_grid = (xDes + x_offset) / CELL_SIZE;
+     int y_des_grid = (yDes + y_offset) / CELL_SIZE;
+
+     int x_grid = (x + x_offset) / CELL_SIZE;
+     int y_grid = (y + y_offset) / CELL_SIZE;
+
+     floodMap(x_des_grid, y_des_grid, x_grid, y_grid);
+
+     cout << "Grid value at start (" << x_grid << "," << y_grid << "): " << (int)grid[x_grid][y_grid] << endl;
+     cout << "Grid value at dest (" << x_des_grid << "," << y_des_grid << "): " << (int)grid[x_des_grid][y_des_grid] << endl;
+
+     if(grid[x_grid][y_grid] < 4) {
+         cout << "ERROR: Start position not reachable! No path exists." << endl;
+         return;
+     }
+
+     path = calculatePath(x_grid, y_grid);
+     path_point = 0;
+
+     int next_idx = path.size() > 1 ? 1 : 0;
+     auto [next_grid_x, next_grid_y] = path[next_idx];
+
+     this->x_des = (next_grid_x - 140) * CELL_SIZE;
+     this->y_des = (next_grid_y - 140) * CELL_SIZE;
+ }
+
+ vector<pair<int, int>> robot::calculatePath(int start_x, int start_y){
+     vector<pair<int, int>> path;
+     path.push_back({start_x, start_y});
+
+     while(grid[start_x][start_y] != 4){
+         int min_value = grid[start_x][start_y];
+         int next_x = start_x;  // FIXED
+         int next_y = start_y;  // FIXED
+
+         int dr[] = {-1, 1, 0, 0, -1, -1, 1, 1};
+         int dc[] = {0, 0, -1, 1, -1, 1, -1, 1};
+
+         for(int i = 0; i < 8; i++){
+             int nx = start_x + dr[i];
+             int ny = start_y + dc[i];
+
+             if(nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE){
+                 if(grid[nx][ny] < min_value && grid[nx][ny] >= 4){
+                     min_value = grid[nx][ny];
+                     next_x = nx;
+                     next_y = ny;
+                 }
+             }
+         }
+
+         start_x = next_x;  // FIXED
+         start_y = next_y;  // FIXED
+         path.push_back({start_x, start_y});  // FIXED
+
+         if(path.size() > GRID_SIZE * GRID_SIZE){
+             cout << "No path found!" << endl;
+             return path;
+         }
+     }
+     return path;
+ }
 
  int robot::processThisRobot(const TKobukiData &robotdata)
  {
@@ -119,7 +287,6 @@ void robot::setDesiredPosition(double xDes, double yDes)
      double delta_right = robotdata.EncoderRight - old_right_encoder;
 
      unsigned timestamp = robotdata.timestamp;
-     unsigned dt = timestamp - old_timestamp;
 
      if(delta_left  >  32767) delta_left  -= 65536;
      if(delta_left  < -32767) delta_left  += 65536;
@@ -166,9 +333,16 @@ void robot::setDesiredPosition(double xDes, double yDes)
 
      double v = 0, w = 0;
 
+
      if(err_lin < 0.02) {
-         v = 0;
-         w = 0;
+         if(path.empty() || path_point >= path.size() - 1) {
+             v = 0; w = 0;
+         } else {
+             path_point++;
+             auto [next_grid_x, next_grid_y] = path[path_point];
+             this->x_des = next_grid_x * CELL_SIZE;
+             this->y_des = next_grid_y * CELL_SIZE;
+         }
      } else {
          if(std::abs(err_ang) > 0.9) {
              v = 0;
@@ -183,19 +357,19 @@ void robot::setDesiredPosition(double xDes, double yDes)
              v = prev_v + 5;
          }
 
-         if ((w - prev_w) > 0.3){
-             w = prev_w + 0.3;
+         if ((w - prev_w) > 0.05){
+             w = prev_w + 0.05;
          }
-         else if ((w - prev_w) < -0.3){
-             w = prev_w - 0.3;
+         else if ((w - prev_w) < -0.05){
+             w = prev_w - 0.05;
          }
      }
 
      prev_v = v;
      prev_w = w;
 
-     v = std::clamp(v,  -400.0, 400.0);
-     w = std::clamp(w, -2.0,   2.0);
+     v = std::clamp(v, -400.0, 400.0);
+     w = std::clamp(w, -0.5, 0.5);
 
      setSpeedVal(v, w);
 
@@ -205,6 +379,7 @@ void robot::setDesiredPosition(double xDes, double yDes)
          cout << "\nGyro raw/delta_deg:  " << gyro_now << " " << delta_deg;
          cout << "\nErrors lin/ang:      " << err_lin  << " " << err_ang;
          cout << "\nCommands v/w:        " << v        << " " << w<<std::endl;
+         cout << "\nDesired position     " << x_des    << " " << y_des;
          emit publishPosition(x, y, fi);
      }
 
@@ -229,8 +404,8 @@ void robot::setDesiredPosition(double xDes, double yDes)
 
      if (poseHistory.empty()) return 0;
 
-     qDebug() << "Lidar called, poses:" << poseHistory.size()
-              << "points:" << copyOfLaserData.size();
+     // qDebug() << "Lidar called, poses:" << poseHistory.size()
+     //          << "points:" << copyOfLaserData.size();
 
      for (const auto& point : copyOfLaserData) {
          double dist_m = point.scanDistance / 1000.0;
@@ -244,7 +419,7 @@ void robot::setDesiredPosition(double xDes, double yDes)
          for (int c = 0; c < GRID_SIZE; c++)
              if (grid[r][c] == OCCUPIED) occupiedCount++;
 
-     qDebug() << "Occupied cells:" << occupiedCount;
+     // qDebug() << "Occupied cells:" << occupiedCount;
 
      emit publishMap(grid);
      copyOfLaserData = laserData;

@@ -37,6 +37,13 @@ class robot : public QObject {
   // tato funkcia fyzicky posiela hodnoty do robota
   void setSpeed(double forw, double rots);
   void saveMap(const std::string& filename);
+  void loadMap(const std::string& filename);
+  void floodMap(int des_x, int des_y, int start_x, int start_y);
+  void bufferMap();
+  vector<int> occDir(int r, int c);
+  vector<pair<int, int>> calculatePath(int start_x, int start_y);
+
+
   void resetRobot();
   void returnHome();
   void setDesiredPosition(double xDes, double yDes);
@@ -55,6 +62,7 @@ class robot : public QObject {
   double x = 0;
   double y = 0;
   double fi = 0;
+  vector<pair<int, int>> path;
 
   bool first_tick = true;
   double old_left_encoder = 0.0;
@@ -73,6 +81,7 @@ class robot : public QObject {
   double x_des;
   double y_des;
   double err_lin_prev = 0, err_ang_prev = 0;
+  int path_point;
 
   double max_v_dt = 400/2;
   // double integral_lin = 0, integral_ang = 0;
@@ -109,7 +118,7 @@ class robot : public QObject {
   // Occupancy grid mapping members
  public:
   // Occupancy states
-  enum CellState { UNKNOWN = 0, FREE = 1, OCCUPIED = 2 };
+  enum CellState { UNKNOWN = 0, FREE = 1, OCCUPIED = 2, BUFFER = 3};
 
   // Pose history for laser interpolation
   struct PoseStamp { double x, y, fi; unsigned timestamp; };
@@ -119,6 +128,8 @@ class robot : public QObject {
   static const int    GRID_SIZE = 280;
   static constexpr double CELL_SIZE = 0.05;
   int grid[GRID_SIZE][GRID_SIZE];
+
+  static const int BUFFER_SIZE = 3;
 
   static constexpr float L_HIT =  0.85f;
   static constexpr float L_FREE  =  0.40f;
@@ -130,7 +141,6 @@ class robot : public QObject {
   double gridOriginX = -(GRID_SIZE * CELL_SIZE / 2.0);
   double gridOriginY = -(GRID_SIZE * CELL_SIZE / 2.0);
 
-  // New method declarations
   PoseStamp interpolatePose(unsigned timestamp);
   void worldToGrid(double wx, double wy, int &col, int &row);
   void bresenham(int c0, int r0, int c1, int r1);

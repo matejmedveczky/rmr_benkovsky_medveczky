@@ -206,6 +206,11 @@ void MainWindow::on_pushButton_12_clicked() //save map
     _robot.saveMap("C:/Users/matej/OneDrive/Dokumenty/STU FEI/Ing/RMR/uloha-1/uloha1/map.txt");
 }
 
+void MainWindow::on_pushButton_13_clicked()
+{
+    _robot.loadMap("C:/Users/matej/OneDrive/Dokumenty/STU FEI/Ing/RMR/uloha-1/uloha1/map.txt");
+}
+
 
 void MainWindow::on_pushButton_clicked()
 {
