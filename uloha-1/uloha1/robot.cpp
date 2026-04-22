@@ -232,6 +232,10 @@
 
      this->x_des = (next_grid_x - 140) * CELL_SIZE;
      this->y_des = (next_grid_y - 140) * CELL_SIZE;
+
+     cout << "First waypoint grid [" << next_grid_x << "," << next_grid_y << "]" << endl;
+     cout << "First waypoint world (" << this->x_des << "," << this->y_des << ")" << endl;
+
  }
 
  vector<pair<int, int>> robot::calculatePath(int start_x, int start_y){
@@ -240,8 +244,8 @@
 
      while(grid[start_x][start_y] != 4){
          int min_value = grid[start_x][start_y];
-         int next_x = start_x;  // FIXED
-         int next_y = start_y;  // FIXED
+         int next_x = start_x;
+         int next_y = start_y;
 
          int dr[] = {-1, 1, 0, 0, -1, -1, 1, 1};
          int dc[] = {0, 0, -1, 1, -1, 1, -1, 1};
@@ -259,15 +263,21 @@
              }
          }
 
-         start_x = next_x;  // FIXED
-         start_y = next_y;  // FIXED
-         path.push_back({start_x, start_y});  // FIXED
+         start_x = next_x;
+         start_y = next_y;
+         path.push_back({start_x, start_y});
 
          if(path.size() > GRID_SIZE * GRID_SIZE){
              cout << "No path found!" << endl;
              return path;
          }
      }
+     cout << "Path" << endl;
+     for(int i = 0; i < path.size(); i++) {
+         cout << "[" << path[i].first << "," << path[i].second << "] ";
+         if((i+1) % 10 == 0) cout << endl;
+     }
+     cout << endl;
      return path;
  }
 
@@ -340,8 +350,14 @@
          } else {
              path_point++;
              auto [next_grid_x, next_grid_y] = path[path_point];
-             this->x_des = next_grid_x * CELL_SIZE;
-             this->y_des = next_grid_y * CELL_SIZE;
+
+             // Convert grid to world WITH offset correction
+             this->x_des = (next_grid_x - 140) * CELL_SIZE;
+             this->y_des = (next_grid_y - 140) * CELL_SIZE;
+
+             cout << "Advancing to waypoint " << path_point
+                  << ": grid[" << next_grid_x << "," << next_grid_y
+                  << "] = world(" << this->x_des << "," << this->y_des << ")" << endl;
          }
      } else {
          if(std::abs(err_ang) > 0.9) {
