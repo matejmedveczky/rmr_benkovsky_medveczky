@@ -41,7 +41,7 @@ class robot : public QObject {
   void floodMap(int des_x, int des_y, int start_x, int start_y);
   void bufferMap();
   vector<int> occDir(int r, int c);
-  vector<pair<int, int>> calculatePath(int start_x, int start_y);
+  vector<pair<double, double>> calculatePath(double start_x, double start_y);
 
 
   void resetRobot();
@@ -62,7 +62,7 @@ class robot : public QObject {
   double x = 0;
   double y = 0;
   double fi = 0;
-  vector<pair<int, int>> path;
+  vector<pair<double, double>> path;
 
   bool first_tick = true;
   double old_left_encoder = 0.0;
@@ -127,6 +127,10 @@ class robot : public QObject {
   // Occupancy grid
   static const int    GRID_SIZE = 280;
   static constexpr double CELL_SIZE = 0.05;
+
+  static const int GRID_OFFSET_X = 140;
+  static const int GRID_OFFSET_Y = 140;
+
   int grid[GRID_SIZE][GRID_SIZE];
 
   static const int BUFFER_SIZE = 3;

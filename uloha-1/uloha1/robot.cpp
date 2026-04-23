@@ -3,6 +3,10 @@
  #include <cstring>
  #include <queue>
 
+/*
+ * Store pairs as {x, y}, access grid as grid[y][x].
+*/
+
  robot::robot(QObject *parent) : QObject(parent)
  {
      qRegisterMetaType<LaserMeasurement>("LaserMeasurement");
@@ -70,6 +74,7 @@
      }
      cout << "Map Saved";
      file.close();
+     emit publishMap(grid);
  }
 
  void robot::loadMap(const std::string& filename)
@@ -81,10 +86,12 @@
      for (int r = 0; r < GRID_SIZE; r++) {
          for (int c = 0; c < GRID_SIZE; c++) {
              file >> grid[r][c];
+             if (grid[r][c] > 3){ grid[r][c] = FREE;}
          }
      }
      cout << "Map Loaded\n\n";
      file.close();
+     emit publishMap(grid);
  }
 
  void robot::bufferMap()
@@ -101,22 +108,30 @@
                  switch(i){
                  case 0: // down
                      for(int p = 1; p < BUFFER_SIZE && r + p < GRID_SIZE; p++){
+                         if (grid[r + p][c - 1] == FREE) grid[r + p][c - 1] = BUFFER;
                          if (grid[r + p][c] == FREE) grid[r + p][c] = BUFFER;
+                         if (grid[r + p][c - 1] == FREE) grid[r + p][c + 1] = BUFFER;
                      }
                      break;
                  case 1: // right
                      for(int p = 1; p < BUFFER_SIZE && c + p < GRID_SIZE; p++){
+                         if (grid[r + 1][c + p] == FREE) grid[r + 1][c + p] = BUFFER;
                          if (grid[r][c + p] == FREE) grid[r][c + p] = BUFFER;
+                         if (grid[r - 1][c + p] == FREE) grid[r - 1][c + p] = BUFFER;
                      }
                      break;
                  case 2: // up
                      for(int p = 1; p < BUFFER_SIZE && r - p >= 0; p++){
+                         if (grid[r - p][c - 1] == FREE) grid[r - p][c - 1] = BUFFER;
                          if (grid[r - p][c] == FREE) grid[r - p][c] = BUFFER;
+                         if (grid[r - p][c - 1] == FREE) grid[r - p][c + 1] = BUFFER;
                      }
                      break;
                  case 3: // left
                      for(int p = 1; p < BUFFER_SIZE && c - p >= 0; p++){
-                         if (grid[r][c - p] == FREE) grid[r][c - p] = BUFFER;
+                         if (grid[r + 1][c - p] == FREE) grid[r + 1][c - p] = BUFFER;
+                         if (grid[r][c + p] == FREE) grid[r][c + p] = BUFFER;
+                         if (grid[r - 1][c - p] == FREE) grid[r - 1][c - p] = BUFFER;
                      }
                      break;
                  }
@@ -125,37 +140,56 @@
      }
  }
 
- void robot::floodMap(int des_x, int des_y, int start_x, int start_y){
+ void robot::floodMap(int x_des, int y_des, int x_start, int y_start){
+     double x_offset = GRID_OFFSET_X * CELL_SIZE;
+     double y_offset = GRID_OFFSET_Y * CELL_SIZE;
+
+     int x_des_grid = (x_des + x_offset) / CELL_SIZE;
+     int y_des_grid = (y_des + y_offset) / CELL_SIZE;
+
+     int x_grid = (x + x_offset) / CELL_SIZE;
+     int y_grid = (y + y_offset) / CELL_SIZE;
+
      bufferMap();
 
      queue<pair<int, int>> q;
-     grid[des_x][des_y] = 4;
-     q.push({des_x, des_y});
+     grid[y_des_grid][x_des_grid] = 4;
+     q.push({x_des_grid, y_des_grid});
 
      while (!q.empty()) {
-         auto [r, c] = q.front();
+         auto [x, y] = q.front();  // FIXED: Call them x, y
          q.pop();
 
-         int current_value = grid[r][c];
+         int current_value = grid[y][x];  // FIXED: Access grid[y][x]
 
-         int dr[] = {-1, 1, 0, 0, -1, -1, 1, 1};
-         int dc[] = {0, 0, -1, 1, -1, 1, -1, 1};
+         int dx[] = {-1, 1, 0, 0, -1, -1, 1, 1};
+         int dy[] = {0, 0, -1, 1, -1, 1, -1, 1};
 
          for (int i = 0; i < 8; i++) {
-             int nr = r + dr[i];
-             int nc = c + dc[i];
+             int nx = x + dx[i];
+             int ny = y + dy[i];
 
-             if (nr >= 0 && nr < GRID_SIZE && nc >= 0 && nc < GRID_SIZE) {
-                 if (grid[nr][nc] == FREE) {
-                     grid[nr][nc] = current_value + 1;
-                     q.push({nr, nc});
+             if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE) {
+                 if (grid[ny][nx] == FREE) {  // FIXED: grid[y][x]
+                     grid[ny][nx] = current_value + 1;
+                     q.push({nx, ny});
 
-                     if (nr == start_x && nc == start_y) {
+                     if (nx == x_grid && ny == y_grid) {
                          return;
                      }
                  }
              }
          }
+     }
+
+     cout << "Grid value at start (" << x_grid << "," << y_grid << "): "
+          << (int)grid[y_grid][x_grid] << endl;
+     cout << "Grid value at dest (" << x_des_grid << "," << y_des_grid << "): "
+          << (int)grid[y_des_grid][x_des_grid] << endl;
+
+     if(grid[y_grid][x_grid] < 4) {
+         cout << "ERROR: Start position not reachable! No path exists." << endl;
+         return;
      }
  }
 
@@ -191,11 +225,13 @@
  }
 
  void robot::resetRobot(){
-     x = 0;
-     y = 0;
-     fi = 0;
+     // x = 0;
+     // y = 0;
+     // fi = 0;
      x_des = 0.0;
      y_des = 0.0;
+     path_point = 0;
+     path.clear();
  }
 
  void robot::returnHome(){
@@ -203,60 +239,48 @@
      y_des = 0.0;
  }
 
- void robot::setDesiredPosition(double xDes, double yDes)
+ void robot::setDesiredPosition(double x_des, double y_des)
  {
-     double x_offset = 140 * CELL_SIZE;
-     double y_offset = 140 * CELL_SIZE;
+     floodMap(x_des, y_des, x, y);
 
-     int x_des_grid = (xDes + x_offset) / CELL_SIZE;
-     int y_des_grid = (yDes + y_offset) / CELL_SIZE;
-
-     int x_grid = (x + x_offset) / CELL_SIZE;
-     int y_grid = (y + y_offset) / CELL_SIZE;
-
-     floodMap(x_des_grid, y_des_grid, x_grid, y_grid);
-
-     cout << "Grid value at start (" << x_grid << "," << y_grid << "): " << (int)grid[x_grid][y_grid] << endl;
-     cout << "Grid value at dest (" << x_des_grid << "," << y_des_grid << "): " << (int)grid[x_des_grid][y_des_grid] << endl;
-
-     if(grid[x_grid][y_grid] < 4) {
-         cout << "ERROR: Start position not reachable! No path exists." << endl;
-         return;
-     }
-
-     path = calculatePath(x_grid, y_grid);
+     path = calculatePath(x, y); //x_des, y_des
      path_point = 0;
 
      int next_idx = path.size() > 1 ? 1 : 0;
-     auto [next_grid_x, next_grid_y] = path[next_idx];
+     auto [next_x, next_y] = path[next_idx];
 
-     this->x_des = (next_grid_x - 140) * CELL_SIZE;
-     this->y_des = (next_grid_y - 140) * CELL_SIZE;
+     this->x_des = next_x;
+     this->y_des = next_y;
 
-     cout << "First waypoint grid [" << next_grid_x << "," << next_grid_y << "]" << endl;
      cout << "First waypoint world (" << this->x_des << "," << this->y_des << ")" << endl;
 
  }
 
- vector<pair<int, int>> robot::calculatePath(int start_x, int start_y){
-     vector<pair<int, int>> path;
-     path.push_back({start_x, start_y});
+ vector<pair<double, double>> robot::calculatePath(double start_x_world, double start_y_world){
+     double x_offset = GRID_OFFSET_X * CELL_SIZE;
+     double y_offset = GRID_OFFSET_Y * CELL_SIZE;
 
-     while(grid[start_x][start_y] != 4){
-         int min_value = grid[start_x][start_y];
+     int start_x = (start_x_world + x_offset) / CELL_SIZE;
+     int start_y = (start_y_world + y_offset) / CELL_SIZE;
+
+     vector<pair<int, int>> grid_path;
+     grid_path.push_back({start_x, start_y});  // {x, y}
+
+     while(grid[start_y][start_x] != 4){  // Access: grid[y][x]
+         int min_value = grid[start_y][start_x];
          int next_x = start_x;
          int next_y = start_y;
 
-         int dr[] = {-1, 1, 0, 0, -1, -1, 1, 1};
-         int dc[] = {0, 0, -1, 1, -1, 1, -1, 1};
+         int dx[] = {-1, 1, 0, 0, -1, -1, 1, 1};
+         int dy[] = {0, 0, -1, 1, -1, 1, -1, 1};
 
          for(int i = 0; i < 8; i++){
-             int nx = start_x + dr[i];
-             int ny = start_y + dc[i];
+             int nx = start_x + dx[i];
+             int ny = start_y + dy[i];
 
              if(nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE){
-                 if(grid[nx][ny] < min_value && grid[nx][ny] >= 4){
-                     min_value = grid[nx][ny];
+                 if(grid[ny][nx] < min_value && grid[ny][nx] >= 4){
+                     min_value = grid[ny][nx];
                      next_x = nx;
                      next_y = ny;
                  }
@@ -265,20 +289,52 @@
 
          start_x = next_x;
          start_y = next_y;
-         path.push_back({start_x, start_y});
+         grid_path.push_back({start_x, start_y});  // FIXED: {x, y}
 
-         if(path.size() > GRID_SIZE * GRID_SIZE){
+         if(grid_path.size() > GRID_SIZE * GRID_SIZE){
              cout << "No path found!" << endl;
-             return path;
+             break;
          }
      }
-     cout << "Path" << endl;
-     for(int i = 0; i < path.size(); i++) {
-         cout << "[" << path[i].first << "," << path[i].second << "] ";
-         if((i+1) % 10 == 0) cout << endl;
+
+     // Rest is correct...
+     cout << "Full grid path (" << grid_path.size() << " points):" << endl;
+     for(int i = 0; i < min(20, (int)grid_path.size()); i++) {
+         cout << "[" << grid_path[i].first << "," << grid_path[i].second << "] ";
+     }
+     cout << "\n...\n";
+     for(int i = max(0, (int)grid_path.size() - 5); i < grid_path.size(); i++) {
+         cout << "[" << grid_path[i].first << "," << grid_path[i].second << "] ";
      }
      cout << endl;
-     return path;
+
+     vector<pair<double, double>> world_path;
+     world_path.push_back({(grid_path[0].first - GRID_OFFSET_X) * CELL_SIZE,
+                           (grid_path[0].second - GRID_OFFSET_Y) * CELL_SIZE});
+
+     for(int i = 1; i < grid_path.size() - 1; i++){
+         int dx_prev = grid_path[i].first - grid_path[i-1].first;
+         int dy_prev = grid_path[i].second - grid_path[i-1].second;
+
+         int dx_next = grid_path[i+1].first - grid_path[i].first;
+         int dy_next = grid_path[i+1].second - grid_path[i].second;
+
+         if(dx_prev != dx_next || dy_prev != dy_next){
+             world_path.push_back({(grid_path[i].first - GRID_OFFSET_X) * CELL_SIZE,
+                                   (grid_path[i].second - GRID_OFFSET_Y) * CELL_SIZE});
+         }
+     }
+
+     world_path.push_back({(grid_path.back().first - GRID_OFFSET_X) * CELL_SIZE,
+                           (grid_path.back().second - GRID_OFFSET_Y) * CELL_SIZE});
+
+     cout << "Simplified path (" << world_path.size() << " waypoints):" << endl;
+     for(auto [wx, wy] : world_path) {
+         cout << "(" << wx << "," << wy << ") ";
+     }
+     cout << endl;
+
+     return world_path;
  }
 
  int robot::processThisRobot(const TKobukiData &robotdata)
@@ -351,9 +407,8 @@
              path_point++;
              auto [next_grid_x, next_grid_y] = path[path_point];
 
-             // Convert grid to world WITH offset correction
-             this->x_des = (next_grid_x - 140) * CELL_SIZE;
-             this->y_des = (next_grid_y - 140) * CELL_SIZE;
+             this->x_des = next_grid_x;
+             this->y_des = next_grid_y;
 
              cout << "Advancing to waypoint " << path_point
                   << ": grid[" << next_grid_x << "," << next_grid_y
@@ -503,7 +558,7 @@
      while (true) {
          if (c0 == c1 && r0 == r1) break;
          if (c0 >= 0 && c0 < GRID_SIZE && r0 >= 0 && r0 < GRID_SIZE)
-             if (grid[r0][c0] != OCCUPIED)
+             if (grid[r0][c0] != OCCUPIED || grid[r0][c0] != BUFFER) //grid[r0][c0] != OCCUPIED || grid[r0][c0] != BUFFER
                  grid[r0][c0] = FREE;
          int e2 = 2 * err;
          if (e2 > -dr) { err -= dr; c0 += sc; }
