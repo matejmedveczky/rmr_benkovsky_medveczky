@@ -266,9 +266,14 @@
      grid_path.push_back({start_x, start_y});  // {x, y}
 
      while(grid[start_y][start_x] != 4){  // Access: grid[y][x]
-         int min_value = grid[start_y][start_x];
-         int next_x = start_x;
-         int next_y = start_y;
+         int min_val = grid[start_y][start_x];
+         int best_x = start_x, best_y = start_y;
+
+         int cur_dx = 0, cur_dy = 0;
+         if(grid_path.size() >= 2){
+             cur_dx = start_x - grid_path[grid_path.size()-2].first;
+             cur_dy = start_y - grid_path[grid_path.size()-2].second;
+         }
 
          int dx[] = {-1, 1, 0, 0, -1, -1, 1, 1};
          int dy[] = {0, 0, -1, 1, -1, 1, -1, 1};
@@ -276,19 +281,24 @@
          for(int i = 0; i < 8; i++){
              int nx = start_x + dx[i];
              int ny = start_y + dy[i];
-
              if(nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE){
-                 if(grid[ny][nx] < min_value && grid[ny][nx] >= 4){
-                     min_value = grid[ny][nx];
-                     next_x = nx;
-                     next_y = ny;
+                 if(grid[ny][nx] >= 4){
+                     bool better = grid[ny][nx] < min_val;
+                     bool tied_and_straight = (grid[ny][nx] == min_val)
+                                              && (dx[i] == cur_dx && dy[i] == cur_dy);
+                     if(better || tied_and_straight){
+                         min_val = grid[ny][nx];
+                         best_x = nx;
+                         best_y = ny;
+                     }
                  }
              }
          }
 
-         start_x = next_x;
-         start_y = next_y;
-         grid_path.push_back({start_x, start_y});  // FIXED: {x, y}
+         // keep as-is, just renamed:
+         start_x = best_x;
+         start_y = best_y;
+         grid_path.push_back({start_x, start_y});
 
          if(grid_path.size() > GRID_SIZE * GRID_SIZE){
              cout << "No path found!" << endl;
@@ -317,7 +327,7 @@
          int dx_next = grid_path[i+1].first - grid_path[i].first;
          int dy_next = grid_path[i+1].second - grid_path[i].second;
 
-         if(dx_prev != dx_next || dy_prev != dy_next){
+         if(dx_prev != dx_next || dy_prev != dy_next){ //dx_prev != dx_next || dy_prev != dy_next
              world_path.push_back({(grid_path[i].first - GRID_OFFSET_X) * CELL_SIZE,
                                    (grid_path[i].second - GRID_OFFSET_Y) * CELL_SIZE});
          }
