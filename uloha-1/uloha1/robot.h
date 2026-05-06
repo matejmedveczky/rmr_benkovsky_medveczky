@@ -133,7 +133,7 @@ class robot : public QObject {
 
   int grid[GRID_SIZE][GRID_SIZE];
 
-  static const int BUFFER_SIZE = 3;
+  static const int BUFFER_SIZE = 5;
 
   static constexpr float L_HIT =  0.85f;
   static constexpr float L_FREE  =  0.40f;
