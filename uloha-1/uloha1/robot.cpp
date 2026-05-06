@@ -96,7 +96,6 @@
 
  void robot::bufferMap()
  {
-     // First pass: identify all obstacles
      vector<pair<int, int>> obstacles;
      for (int r = 0; r < GRID_SIZE; r++) {
          for (int c = 0; c < GRID_SIZE; c++) {
@@ -106,29 +105,24 @@
          }
      }
 
-     // 8 directions: N, S, E, W, NE, NW, SE, SW
      int dr[] = {-1, 1, 0, 0, -1, -1, 1, 1};
      int dc[] = {0, 0, 1, -1, 1, -1, 1, -1};
 
-     // Second pass: create buffers around each obstacle in all 8 directions
      for (auto [r, c] : obstacles) {
          for (int dir = 0; dir < 8; dir++) {
              for (int p = 1; p <= BUFFER_SIZE; p++) {
                  int nr = r + dr[dir] * p;
                  int nc = c + dc[dir] * p;
 
-                 // Bounds check
                  if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE) {
-                     break;  // Stop extending in this direction
+                     break;
                  }
 
-                 // Only buffer FREE cells, don't overwrite obstacles
                  if (grid[nr][nc] == FREE) {
                      grid[nr][nc] = BUFFER;
                  } else if (grid[nr][nc] == OCCUPIED) {
-                     break;  // Hit another obstacle, stop extending
+                     break;
                  }
-                 // If already BUFFER, keep going
              }
          }
      }
@@ -152,31 +146,31 @@
 
      bufferMap();
 
-     queue<pair<int, int>> q;
+     priority_queue<tuple<int,int,int>, vector<tuple<int,int,int>>, greater<>> pq;
      grid[y_des_grid][x_des_grid] = 4;
-     q.push({x_des_grid, y_des_grid});
+     pq.push({4, x_des_grid, y_des_grid});
 
-     while (!q.empty()) {
-         auto [x, y] = q.front();  // FIXED: Call them x, y
-         q.pop();
+     while (!pq.empty()) {
+         auto [cost, x, y] = pq.top();
+         pq.pop();
 
-         int current_value = grid[y][x];  // FIXED: Access grid[y][x]
+         if (grid[y][x] != cost) continue;
 
          int dx[] = {-1, 1, 0, 0, -1, -1, 1, 1};
          int dy[] = {0, 0, -1, 1, -1, 1, -1, 1};
+         int step_cost[] = {10, 10, 10, 10, 14, 14, 14, 14};
 
          for (int i = 0; i < 8; i++) {
              int nx = x + dx[i];
              int ny = y + dy[i];
+             int new_cost = cost + step_cost[i];
 
              if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE) {
-                 if (grid[ny][nx] == FREE) {  // FIXED: grid[y][x]
-                     grid[ny][nx] = current_value + 1;
-                     q.push({nx, ny});
+                 if (grid[ny][nx] == FREE) {
+                     grid[ny][nx] = new_cost;
+                     pq.push({new_cost, nx, ny});
 
-                     if (nx == x_grid && ny == y_grid) {
-                         return;
-                     }
+                     if (nx == x_grid && ny == y_grid) return;
                  }
              }
          }
@@ -265,7 +259,7 @@
      vector<pair<int, int>> grid_path;
      grid_path.push_back({start_x, start_y});  // {x, y}
 
-     while(grid[start_y][start_x] != 4){  // Access: grid[y][x]
+     while(grid[start_y][start_x] != 4){
          int min_val = grid[start_y][start_x];
          int best_x = start_x, best_y = start_y;
 
@@ -275,19 +269,21 @@
              cur_dy = start_y - grid_path[grid_path.size()-2].second;
          }
 
-         int dx[] = {-1, 1, 0, 0, -1, -1, 1, 1};
-         int dy[] = {0, 0, -1, 1, -1, 1, -1, 1};
+         int dx[] = {-1, -1, 1, 1, 0, 0, -1, 1};
+         int dy[] = {-1, 1, -1, 1, -1, 1,  0, 0};
 
          for(int i = 0; i < 8; i++){
              int nx = start_x + dx[i];
              int ny = start_y + dy[i];
+
+             bool is_turn = (dx[i] != cur_dx || dy[i] != cur_dy);
+             int turn_penalty = is_turn ? 3 : 0;  // tune this value
+
              if(nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE){
                  if(grid[ny][nx] >= 4){
-                     bool better = grid[ny][nx] < min_val;
-                     bool tied_and_straight = (grid[ny][nx] == min_val)
-                                              && (dx[i] == cur_dx && dy[i] == cur_dy);
-                     if(better || tied_and_straight){
-                         min_val = grid[ny][nx];
+                     int effective_cost = grid[ny][nx] + turn_penalty;
+                     if(effective_cost < min_val){
+                         min_val = effective_cost;
                          best_x = nx;
                          best_y = ny;
                      }
@@ -295,7 +291,6 @@
              }
          }
 
-         // keep as-is, just renamed:
          start_x = best_x;
          start_y = best_y;
          grid_path.push_back({start_x, start_y});
