@@ -96,45 +96,39 @@
 
  void robot::bufferMap()
  {
-     for (int r = 1; r < GRID_SIZE - 1; r++) {
-         for (int c = 1; c < GRID_SIZE - 1; c++) {
-             if (grid[r][c] != FREE) continue;
+     // First pass: identify all obstacles
+     vector<pair<int, int>> obstacles;
+     for (int r = 0; r < GRID_SIZE; r++) {
+         for (int c = 0; c < GRID_SIZE; c++) {
+             if (grid[r][c] == OCCUPIED) {
+                 obstacles.push_back({r, c});
+             }
+         }
+     }
 
-             vector<int> arr = occDir(r, c);
+     // 8 directions: N, S, E, W, NE, NW, SE, SW
+     int dr[] = {-1, 1, 0, 0, -1, -1, 1, 1};
+     int dc[] = {0, 0, 1, -1, 1, -1, 1, -1};
 
-             for(int i = 0; i < 4; i++){
-                 if(arr[i] != 1) continue;
+     // Second pass: create buffers around each obstacle in all 8 directions
+     for (auto [r, c] : obstacles) {
+         for (int dir = 0; dir < 8; dir++) {
+             for (int p = 1; p <= BUFFER_SIZE; p++) {
+                 int nr = r + dr[dir] * p;
+                 int nc = c + dc[dir] * p;
 
-                 switch(i){
-                 case 0: // down
-                     for(int p = 1; p < BUFFER_SIZE && r + p < GRID_SIZE; p++){
-                         if (grid[r + p][c - 1] == FREE) grid[r + p][c - 1] = BUFFER;
-                         if (grid[r + p][c] == FREE) grid[r + p][c] = BUFFER;
-                         if (grid[r + p][c - 1] == FREE) grid[r + p][c + 1] = BUFFER;
-                     }
-                     break;
-                 case 1: // right
-                     for(int p = 1; p < BUFFER_SIZE && c + p < GRID_SIZE; p++){
-                         if (grid[r + 1][c + p] == FREE) grid[r + 1][c + p] = BUFFER;
-                         if (grid[r][c + p] == FREE) grid[r][c + p] = BUFFER;
-                         if (grid[r - 1][c + p] == FREE) grid[r - 1][c + p] = BUFFER;
-                     }
-                     break;
-                 case 2: // up
-                     for(int p = 1; p < BUFFER_SIZE && r - p >= 0; p++){
-                         if (grid[r - p][c - 1] == FREE) grid[r - p][c - 1] = BUFFER;
-                         if (grid[r - p][c] == FREE) grid[r - p][c] = BUFFER;
-                         if (grid[r - p][c - 1] == FREE) grid[r - p][c + 1] = BUFFER;
-                     }
-                     break;
-                 case 3: // left
-                     for(int p = 1; p < BUFFER_SIZE && c - p >= 0; p++){
-                         if (grid[r + 1][c - p] == FREE) grid[r + 1][c - p] = BUFFER;
-                         if (grid[r][c + p] == FREE) grid[r][c + p] = BUFFER;
-                         if (grid[r - 1][c - p] == FREE) grid[r - 1][c - p] = BUFFER;
-                     }
-                     break;
+                 // Bounds check
+                 if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE) {
+                     break;  // Stop extending in this direction
                  }
+
+                 // Only buffer FREE cells, don't overwrite obstacles
+                 if (grid[nr][nc] == FREE) {
+                     grid[nr][nc] = BUFFER;
+                 } else if (grid[nr][nc] == OCCUPIED) {
+                     break;  // Hit another obstacle, stop extending
+                 }
+                 // If already BUFFER, keep going
              }
          }
      }
@@ -149,6 +143,12 @@
 
      int x_grid = (x + x_offset) / CELL_SIZE;
      int y_grid = (y + y_offset) / CELL_SIZE;
+
+     for (int i = 0; i < GRID_SIZE; i++){
+         for (int j = 0; j < GRID_SIZE; j++){
+             if(grid[i][j] > BUFFER) {grid[i][j] = FREE;}
+         }
+     }
 
      bufferMap();
 
@@ -235,8 +235,7 @@
  }
 
  void robot::returnHome(){
-     x_des = 0.0;
-     y_des = 0.0;
+     setDesiredPosition(0.0, 0.0);
  }
 
  void robot::setDesiredPosition(double x_des, double y_des)
@@ -297,7 +296,6 @@
          }
      }
 
-     // Rest is correct...
      cout << "Full grid path (" << grid_path.size() << " points):" << endl;
      for(int i = 0; i < min(20, (int)grid_path.size()); i++) {
          cout << "[" << grid_path[i].first << "," << grid_path[i].second << "] ";
@@ -558,7 +556,7 @@
      while (true) {
          if (c0 == c1 && r0 == r1) break;
          if (c0 >= 0 && c0 < GRID_SIZE && r0 >= 0 && r0 < GRID_SIZE)
-             if (grid[r0][c0] != OCCUPIED || grid[r0][c0] != BUFFER) //grid[r0][c0] != OCCUPIED || grid[r0][c0] != BUFFER
+             if (grid[r0][c0] == UNKNOWN) //grid[r0][c0] != OCCUPIED || grid[r0][c0] != BUFFER
                  grid[r0][c0] = FREE;
          int e2 = 2 * err;
          if (e2 > -dr) { err -= dr; c0 += sc; }
