@@ -179,15 +179,15 @@ void robot::setDesiredPosition(double xDes, double yDes)
              w = Kp_ang * err_ang;
          }
 
-         if ((v - prev_v) > 5){
-             v = prev_v + 5;
+         if ((v - prev_v) > 2){
+             v = prev_v + 2;
          }
 
-         if ((w - prev_w) > 0.3){
-             w = prev_w + 0.3;
+         if ((w - prev_w) > 0.1){
+             w = prev_w + 0.1;
          }
-         else if ((w - prev_w) < -0.3){
-             w = prev_w - 0.3;
+         else if ((w - prev_w) < -0.1){
+             w = prev_w - 0.1;
          }
      }
 
@@ -195,7 +195,7 @@ void robot::setDesiredPosition(double xDes, double yDes)
      prev_w = w;
 
      v = std::clamp(v,  -400.0, 400.0);
-     w = std::clamp(w, -2.0,   2.0);
+     w = std::clamp(w, -1.0,   1.0);
 
      setSpeedVal(v, w);
 
