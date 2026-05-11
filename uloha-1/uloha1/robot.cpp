@@ -403,8 +403,11 @@
      double v = 0, w = 0;
 
 
-     if(err_lin < 0.02) {
-         if(path.empty() || path_point >= path.size() - 1) {
+     bool is_last_waypoint = path.empty() || path_point >= path.size() - 1;
+     double tolerance = is_last_waypoint ? 0.02 : 0.15;
+
+     if(err_lin < tolerance) {
+         if(is_last_waypoint) {
              v = 0; w = 0;
          } else {
              path_point++;
@@ -481,6 +484,7 @@
      // qDebug() << "Lidar called, poses:" << poseHistory.size()
      //          << "points:" << copyOfLaserData.size();
 
+     /*
      for (const auto& point : copyOfLaserData) {
          double dist_m = point.scanDistance / 1000.0;
          if (dist_m < 0.05 || dist_m > 2.5 || (dist_m > 0.5 && dist_m < 0.7)) continue;
@@ -495,6 +499,7 @@
 
      // qDebug() << "Occupied cells:" << occupiedCount;
 
+     */
      emit publishMap(grid);
      copyOfLaserData = laserData;
      emit publishLidar(copyOfLaserData);
