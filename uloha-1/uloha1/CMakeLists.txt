@@ -30,7 +30,7 @@ if(DISABLE_JOYSTICK)
     target_compile_definitions(${PROJECT_NAME} PRIVATE DISABLE_JOYSTICK)
 endif()
 
-target_link_libraries(${PROJECT_NAME} 
+target_link_libraries(${PROJECT_NAME}
     PRIVATE librobot::librobot
     PRIVATE Qt6::Core Qt6::Widgets Qt6::Gui Qt6::Network
 )
