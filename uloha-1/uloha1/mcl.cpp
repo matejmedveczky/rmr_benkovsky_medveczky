@@ -35,11 +35,18 @@ void MCL::init(const Map& map)
          << free_cells.size() << " free cells\n";
 }
 
+void MCL::activate()
+{
+    active = true;
+    cout << "[MCL] Activated";
+}
+
 void MCL::deactivate()
 {
     active = false;
-    particles.clear();
-    free_cells.clear();
+    first_deactivate = false;
+    //particles.clear();
+    //free_cells.clear();
     cout << "[MCL] Deactivated - odometry takes over\n";
 }
 

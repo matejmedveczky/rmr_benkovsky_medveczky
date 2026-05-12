@@ -71,6 +71,11 @@ class robot : public QObject {
 
   double prev_v = 0.0;
   double prev_w = 0.0;
+
+  static constexpr double MCL_DIVERGE_WARN  = 0.3;
+  static constexpr double MCL_DIVERGE_SNAP  = 0.8;
+  int mcl_diverge_count = 0;
+  static const int MCL_DIVERGE_STREAK = 5;
   ///-----------------------------
   /// toto su rychlosti ktore sa nastavuju setSpeedVal a posielaju v
   /// processThisRobot
@@ -109,6 +114,7 @@ class robot : public QObject {
   int datacounter;
   int lidarcounter;
   int mcl_converged_streak = 0;
+  double mcl_cooldown;
   static const int MCL_CONVERGE_REQUIRED = 10;  // must be converged for 10 consecutive LIDAR scans
 #ifndef DISABLE_OPENCV
   bool useCamera1;

@@ -12,6 +12,7 @@ public:
     // ── Public types ────────────────────────────────────────────────
     struct Particle { double x, y, fi, weight; };
     struct Pose     { double x, y, fi; };
+    bool first_deactivate = true;
 
     // ── Grid constants (must match robot.h) ─────────────────────────
     static const int    GRID_SIZE = 280;
@@ -40,6 +41,7 @@ public:
 
     bool isActive() const { return active; }
     void deactivate();
+    void activate();
 
     // ── Core MCL steps ──────────────────────────────────────────────
 

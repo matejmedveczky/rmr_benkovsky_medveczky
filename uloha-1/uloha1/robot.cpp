@@ -133,6 +133,7 @@
 
  int robot::processThisRobot(const TKobukiData &robotdata)
  {
+
      long double tick = robotCom.getTickToMeter();
 
      if(first_tick) {
@@ -322,12 +323,41 @@
              if (mcl_converged_streak >= MCL_CONVERGE_REQUIRED) {
                  auto pose = mcl.estimatePose();
                  x = pose.x;  y = pose.y;  fi = pose.fi;
-                 mcl.deactivate();
-                 mcl_converged_streak = 0;
-                 setDesiredPosition(0.0, 0.0);
+
+                 if(mcl_cooldown > 0){
+                     mcl_cooldown--;
+                     cout << "[MCL] Cool down remaining: " << mcl_cooldown;
+                 } else {
+                     if(mcl.first_deactivate){
+                         setDesiredPosition(0.0, 0.0);
+                     }
+                     mcl.deactivate();
+                     mcl_converged_streak = 0;
+                 }
              }
          } else {
              mcl_converged_streak = 0;
+         }
+     }
+     else {
+         double dx  = pose.x - x;
+         double dy  = pose.y - y;
+         double div = std::sqrt(dx*dx + dy*dy);
+
+         if (div > MCL_DIVERGE_WARN) {
+             mcl_diverge_count++;
+             cout << "[MCL] Background divergence: " << div
+                  << "m (streak " << mcl_diverge_count << ")\n";
+
+             if (mcl_diverge_count >= MCL_DIVERGE_STREAK) {
+                 if (div > MCL_DIVERGE_SNAP) {
+                     mcl.activate();
+                     mcl_cooldown = 100;
+                 }
+                 mcl_diverge_count = 0;
+             }
+         } else {
+             mcl_diverge_count = 0;
          }
      }
 
