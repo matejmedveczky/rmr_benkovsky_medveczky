@@ -91,6 +91,7 @@ private:
 #endif
 public slots:
   void setUiValues(double robotX, double robotY, double robotFi);
+  void setVariance(double var);
 };
 
 #endif // MAINWINDOW_H

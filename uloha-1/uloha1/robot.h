@@ -6,6 +6,8 @@
 #include <deque>
 #include <cmath>
 #include <fstream>
+#include "map.h"
+#include "mcl.h"
 
 #ifndef DISABLE_OPENCV
 #include "opencv2/core/utility.hpp"
@@ -36,21 +38,18 @@ class robot : public QObject {
   void setSpeedVal(double forw, double rots);
   // tato funkcia fyzicky posiela hodnoty do robota
   void setSpeed(double forw, double rots);
-  void saveMap(const std::string& filename);
-  void loadMap(const std::string& filename);
-  void floodMap(int des_x, int des_y, int start_x, int start_y);
-  void bufferMap();
-  vector<int> occDir(int r, int c);
-  vector<pair<double, double>> calculatePath(double start_x, double start_y);
 
 
   void resetRobot();
   void returnHome();
+  void saveMap(const std::string& filename);
+  void loadMap(const std::string& filename);
   void setDesiredPosition(double xDes, double yDes);
  signals:
   void publishPosition(double x, double y, double z);
   void publishLidar(const std::vector<LaserData> &lidata);
   void publishMap(int grid[280][280]);
+  void publishVariance(double var);
 #ifndef DISABLE_OPENCV
   void publishCamera(const cv::Mat &camframe);
 #endif
@@ -80,8 +79,13 @@ class robot : public QObject {
 
   double x_des;
   double y_des;
+  int goal_grid_x;
+  int goal_grid_y;
   double err_lin_prev = 0, err_ang_prev = 0;
   int path_point;
+
+  Map map;
+  MCL mcl;
 
   double max_v_dt = 400/2;
   // double integral_lin = 0, integral_ang = 0;
@@ -103,6 +107,9 @@ class robot : public QObject {
 
   /// pomocne premenne... moc nerieste naco su
   int datacounter;
+  int lidarcounter;
+  int mcl_converged_streak = 0;
+  static const int MCL_CONVERGE_REQUIRED = 10;  // must be converged for 10 consecutive LIDAR scans
 #ifndef DISABLE_OPENCV
   bool useCamera1;
   int actIndex;
@@ -115,9 +122,7 @@ class robot : public QObject {
 #endif
   int useDirectCommands;
 
-  // Occupancy grid mapping members
  public:
-  // Occupancy states
   enum CellState { UNKNOWN = 0, FREE = 1, OCCUPIED = 2, BUFFER = 3};
 
   // Pose history for laser interpolation
@@ -144,11 +149,6 @@ class robot : public QObject {
 
   double gridOriginX = -(GRID_SIZE * CELL_SIZE / 2.0);
   double gridOriginY = -(GRID_SIZE * CELL_SIZE / 2.0);
-
-  PoseStamp interpolatePose(unsigned timestamp);
-  void worldToGrid(double wx, double wy, int &col, int &row);
-  void bresenham(int c0, int r0, int c1, int r1);
-  void updateGrid(const LaserData& point, const PoseStamp& pose);
 };
 
 #endif // ROBOT_H

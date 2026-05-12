@@ -109,6 +109,12 @@ void  MainWindow::setUiValues(double robotX,double robotY,double robotFi)
     ui->lineEdit_2->setText(QString::number(robotX));
     ui->lineEdit_3->setText(QString::number(robotY));
     ui->lineEdit_4->setText(QString::number(robotFi));
+
+}
+
+void  MainWindow::setVariance(double var)
+{
+    ui->lineEdit_5->setText(QString::number(var));
 }
 
 
@@ -125,6 +131,8 @@ void MainWindow::on_pushButton_9_clicked() //start button
 
     connect(&_robot,SIGNAL(publishPosition(double,double,double)),this,SLOT(setUiValues(double,double,double)));
     connect(&_robot,SIGNAL(publishLidar(const std::vector<LaserData> &)),this,SLOT(paintThisLidar(const std::vector<LaserData> &)));
+    connect(&_robot, SIGNAL(publishVariance(double)), this, SLOT(setVariance(double)));
+
 #ifndef DISABLE_OPENCV
     connect(&_robot,SIGNAL(publishCamera(const cv::Mat &)),this,SLOT(paintThisCamera(const cv::Mat &)));
 #endif

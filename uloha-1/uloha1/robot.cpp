@@ -2,6 +2,10 @@
  #include <cmath>
  #include <cstring>
  #include <queue>
+ #include "map.h"
+ #include "mcl.h"
+
+
 
 /*
  * Store pairs as {x, y}, access grid as grid[y][x].
@@ -9,13 +13,15 @@
 
  robot::robot(QObject *parent) : QObject(parent)
  {
+     cout << "[Robot] Constructor start\n" << std::flush;
      qRegisterMetaType<LaserMeasurement>("LaserMeasurement");
- #ifndef DISABLE_OPENCV
+     #ifndef DISABLE_OPENCV
      qRegisterMetaType<cv::Mat>("cv::Mat");
- #endif
- #ifndef DISABLE_SKELETON
+     #endif
+     #ifndef DISABLE_SKELETON
      qRegisterMetaType<skeleton>("skeleton");
- #endif
+     #endif
+     cout << "[Robot] Constructor done\n" << std::flush;
  }
 
  void robot::initAndStartRobot(std::string ipaddress)
@@ -59,151 +65,27 @@
      useDirectCommands=0;
  }
 
- void robot::saveMap(const std::string& filename)
- {
-     cout << "Saving Map";
-     std::ofstream file(filename);
-     if (!file.is_open()) return;
 
-     for (int r = 0; r < GRID_SIZE; r++) {
-         for (int c = 0; c < GRID_SIZE; c++) {
-             file << grid[r][c];
-             if (c < GRID_SIZE - 1) file << " ";
-         }
-         file << "\n";
-     }
-     cout << "Map Saved";
-     file.close();
-     emit publishMap(grid);
- }
 
  void robot::loadMap(const std::string& filename)
  {
      cout << "Loading Map\n";
-     std::ifstream file(filename);
-     if (!file.is_open()) return;
-
-     for (int r = 0; r < GRID_SIZE; r++) {
-         for (int c = 0; c < GRID_SIZE; c++) {
-             file >> grid[r][c];
-             if (grid[r][c] > 3){ grid[r][c] = FREE;}
-         }
-     }
+     map.loadMap(filename);
+     emit publishMap(map.grid);
+     mcl.init(map);
      cout << "Map Loaded\n\n";
-     file.close();
-     emit publishMap(grid);
  }
 
- void robot::bufferMap()
+ void robot::saveMap(const std::string& filename)
  {
-     vector<pair<int, int>> obstacles;
-     for (int r = 0; r < GRID_SIZE; r++) {
-         for (int c = 0; c < GRID_SIZE; c++) {
-             if (grid[r][c] == OCCUPIED) {
-                 obstacles.push_back({r, c});
-             }
-         }
-     }
-
-     int dr[] = {-1, 1, 0, 0, -1, -1, 1, 1};
-     int dc[] = {0, 0, 1, -1, 1, -1, 1, -1};
-
-     for (auto [r, c] : obstacles) {
-         for (int dir = 0; dir < 8; dir++) {
-             for (int p = 1; p <= BUFFER_SIZE; p++) {
-                 int nr = r + dr[dir] * p;
-                 int nc = c + dc[dir] * p;
-
-                 if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE) {
-                     break;
-                 }
-
-                 if (grid[nr][nc] == FREE) {
-                     grid[nr][nc] = BUFFER;
-                 } else if (grid[nr][nc] == OCCUPIED) {
-                     break;
-                 }
-             }
-         }
-     }
+     cout << "Saving Map\n";
+     map.saveMap(filename);
+     emit publishMap(map.grid);
+     cout << "Map saved\n\n";
  }
 
- void robot::floodMap(int x_des, int y_des, int x_start, int y_start){
-     double x_offset = GRID_OFFSET_X * CELL_SIZE;
-     double y_offset = GRID_OFFSET_Y * CELL_SIZE;
 
-     int x_des_grid = (x_des + x_offset) / CELL_SIZE;
-     int y_des_grid = (y_des + y_offset) / CELL_SIZE;
 
-     int x_grid = (x + x_offset) / CELL_SIZE;
-     int y_grid = (y + y_offset) / CELL_SIZE;
-
-     for (int i = 0; i < GRID_SIZE; i++){
-         for (int j = 0; j < GRID_SIZE; j++){
-             if(grid[i][j] > BUFFER) {grid[i][j] = FREE;}
-         }
-     }
-
-     bufferMap();
-
-     priority_queue<tuple<int,int,int>, vector<tuple<int,int,int>>, greater<>> pq;
-     grid[y_des_grid][x_des_grid] = 4;
-     pq.push({4, x_des_grid, y_des_grid});
-
-     while (!pq.empty()) {
-         auto [cost, x, y] = pq.top();
-         pq.pop();
-
-         if (grid[y][x] != cost) continue;
-
-         int dx[] = {-1, 1, 0, 0, -1, -1, 1, 1};
-         int dy[] = {0, 0, -1, 1, -1, 1, -1, 1};
-         int step_cost[] = {10, 10, 10, 10, 14, 14, 14, 14};
-
-         for (int i = 0; i < 8; i++) {
-             int nx = x + dx[i];
-             int ny = y + dy[i];
-             int new_cost = cost + step_cost[i];
-
-             if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE) {
-                 if (grid[ny][nx] == FREE) {
-                     grid[ny][nx] = new_cost;
-                     pq.push({new_cost, nx, ny});
-
-                     if (nx == x_grid && ny == y_grid) return;
-                 }
-             }
-         }
-     }
-
-     cout << "Grid value at start (" << x_grid << "," << y_grid << "): "
-          << (int)grid[y_grid][x_grid] << endl;
-     cout << "Grid value at dest (" << x_des_grid << "," << y_des_grid << "): "
-          << (int)grid[y_des_grid][x_des_grid] << endl;
-
-     if(grid[y_grid][x_grid] < 4) {
-         cout << "ERROR: Start position not reachable! No path exists." << endl;
-         return;
-     }
- }
-
- vector<int> robot::occDir(int r, int c){
-     vector<int> arr = {0, 0, 0, 0};
-
-     if(grid[r - 1][c] == OCCUPIED){
-         arr[0] = 1;
-     }
-     if(grid[r][c - 1] == OCCUPIED){
-         arr[1] = 1;
-     }
-     if(grid[r + 1][c] == OCCUPIED){
-         arr[2] = 1;
-     }
-     if(grid[r][c + 1] == OCCUPIED){
-         arr[3] = 1;
-     }
-     return arr;
- }
 
  void robot::setSpeed(double forw, double rots)
  {
@@ -234,9 +116,9 @@
 
  void robot::setDesiredPosition(double x_des, double y_des)
  {
-     floodMap(x_des, y_des, x, y);
+     map.floodMap(x_des, y_des, x, y);
 
-     path = calculatePath(x, y); //x_des, y_des
+     path = map.calculatePath(x, y); //x_des, y_des
      path_point = 0;
 
      int next_idx = path.size() > 1 ? 1 : 0;
@@ -247,97 +129,6 @@
 
      cout << "First waypoint world (" << this->x_des << "," << this->y_des << ")" << endl;
 
- }
-
- vector<pair<double, double>> robot::calculatePath(double start_x_world, double start_y_world){
-     double x_offset = GRID_OFFSET_X * CELL_SIZE;
-     double y_offset = GRID_OFFSET_Y * CELL_SIZE;
-
-     int start_x = (start_x_world + x_offset) / CELL_SIZE;
-     int start_y = (start_y_world + y_offset) / CELL_SIZE;
-
-     vector<pair<int, int>> grid_path;
-     grid_path.push_back({start_x, start_y});  // {x, y}
-
-     while(grid[start_y][start_x] != 4){
-         int min_val = grid[start_y][start_x];
-         int best_x = start_x, best_y = start_y;
-
-         int cur_dx = 0, cur_dy = 0;
-         if(grid_path.size() >= 2){
-             cur_dx = start_x - grid_path[grid_path.size()-2].first;
-             cur_dy = start_y - grid_path[grid_path.size()-2].second;
-         }
-
-         int dx[] = {-1, -1, 1, 1, 0, 0, -1, 1};
-         int dy[] = {-1, 1, -1, 1, -1, 1,  0, 0};
-
-         for(int i = 0; i < 8; i++){
-             int nx = start_x + dx[i];
-             int ny = start_y + dy[i];
-
-             bool is_turn = (dx[i] != cur_dx || dy[i] != cur_dy);
-             int turn_penalty = is_turn ? 3 : 0;  // tune this value
-
-             if(nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE){
-                 if(grid[ny][nx] >= 4){
-                     int effective_cost = grid[ny][nx] + turn_penalty;
-                     if(effective_cost < min_val){
-                         min_val = effective_cost;
-                         best_x = nx;
-                         best_y = ny;
-                     }
-                 }
-             }
-         }
-
-         start_x = best_x;
-         start_y = best_y;
-         grid_path.push_back({start_x, start_y});
-
-         if(grid_path.size() > GRID_SIZE * GRID_SIZE){
-             cout << "No path found!" << endl;
-             break;
-         }
-     }
-
-     cout << "Full grid path (" << grid_path.size() << " points):" << endl;
-     for(int i = 0; i < min(20, (int)grid_path.size()); i++) {
-         cout << "[" << grid_path[i].first << "," << grid_path[i].second << "] ";
-     }
-     cout << "\n...\n";
-     for(int i = max(0, (int)grid_path.size() - 5); i < grid_path.size(); i++) {
-         cout << "[" << grid_path[i].first << "," << grid_path[i].second << "] ";
-     }
-     cout << endl;
-
-     vector<pair<double, double>> world_path;
-     world_path.push_back({(grid_path[0].first - GRID_OFFSET_X) * CELL_SIZE,
-                           (grid_path[0].second - GRID_OFFSET_Y) * CELL_SIZE});
-
-     for(int i = 1; i < grid_path.size() - 1; i++){
-         int dx_prev = grid_path[i].first - grid_path[i-1].first;
-         int dy_prev = grid_path[i].second - grid_path[i-1].second;
-
-         int dx_next = grid_path[i+1].first - grid_path[i].first;
-         int dy_next = grid_path[i+1].second - grid_path[i].second;
-
-         if(dx_prev != dx_next || dy_prev != dy_next){ //dx_prev != dx_next || dy_prev != dy_next
-             world_path.push_back({(grid_path[i].first - GRID_OFFSET_X) * CELL_SIZE,
-                                   (grid_path[i].second - GRID_OFFSET_Y) * CELL_SIZE});
-         }
-     }
-
-     world_path.push_back({(grid_path.back().first - GRID_OFFSET_X) * CELL_SIZE,
-                           (grid_path.back().second - GRID_OFFSET_Y) * CELL_SIZE});
-
-     cout << "Simplified path (" << world_path.size() << " waypoints):" << endl;
-     for(auto [wx, wy] : world_path) {
-         cout << "(" << wx << "," << wy << ") ";
-     }
-     cout << endl;
-
-     return world_path;
  }
 
  int robot::processThisRobot(const TKobukiData &robotdata)
@@ -354,8 +145,6 @@
 
      double delta_left  = robotdata.EncoderLeft  - old_left_encoder;
      double delta_right = robotdata.EncoderRight - old_right_encoder;
-
-     unsigned timestamp = robotdata.timestamp;
 
      if(delta_left  >  32767) delta_left  -= 65536;
      if(delta_left  < -32767) delta_left  += 65536;
@@ -375,24 +164,29 @@
      while(delta_deg >  180.0) delta_deg -= 360.0;
      while(delta_deg < -180.0) delta_deg += 360.0;
 
-     fi += delta_deg * M_PI / 180.0;
-
-     while(fi >  M_PI) fi -= 2*M_PI;
-     while(fi < -M_PI) fi += 2*M_PI;
-
+     double delta_fi  = delta_deg * M_PI / 180.0;
      double step_dist = (left_distance + right_distance) / 2.0;
-     x += step_dist * cos(fi);
-     y += step_dist * sin(fi);
 
-     PoseStamp ps = {x, y, fi, robotdata.synctimestamp};
-     poseHistory.push_back(ps);
-     if (poseHistory.size() > 200)
-         poseHistory.pop_front();
+     Map::PoseStamp ps = {x, y, fi, robotdata.synctimestamp};
+     map.addPose(ps);
+
+     if (mcl.isActive()) {
+         mcl.motionUpdate(step_dist, delta_fi);
+         auto pose = mcl.estimatePose();
+         x = pose.x;  y = pose.y;  fi = pose.fi;
+     } else {
+         fi += delta_fi;
+         while(fi >  M_PI) fi -= 2*M_PI;
+         while(fi < -M_PI) fi += 2*M_PI;
+         x += step_dist * std::cos(fi);
+         y += step_dist * std::sin(fi);
+     }
 
      double dx      = x_des - x;
      double dy      = y_des - y;
      double err_lin = sqrt(dx*dx + dy*dy);
      double err_ang = atan2(dy, dx) - fi;
+
 
      while(err_ang >  M_PI) err_ang -= 2*M_PI;
      while(err_ang < -M_PI) err_ang += 2*M_PI;
@@ -445,18 +239,50 @@
      prev_v = v;
      prev_w = w;
 
-     v = std::clamp(v, -400.0, 400.0);
-     w = std::clamp(w, -0.5, 0.5);
+     if (mcl.isActive()) {
+         double var = mcl.particleVariance();
+         double confidence = std::exp(-var / MCL::VAR_HIGH);
+         v = v * confidence;
+         v = std::clamp(v, -80.0, 80.0);
+         w = std::clamp(w, -0.2, 0.2);
+     }
+     else {
+         v = std::clamp(v, -400.0, 400.0);
+         w = std::clamp(w, -0.5, 0.5);
+     }
+
+     if (!copyOfLaserData.empty() && mcl.isActive()) {
+         // Check forward cone (±30°) and sides
+         float min_front = 2.5f, min_left = 2.5f, min_right = 2.5f;
+         for (const auto& p : copyOfLaserData) {
+             float d = p.scanDistance / 1000.0f;
+             if (d < 0.05f || d > 2.5f) continue;
+             float a = p.scanAngle;
+             if      (a < 30  || a > 330) min_front = std::min(min_front, d);
+             else if (a >= 30 && a < 180) min_left  = std::min(min_left,  d);
+             else                          min_right = std::min(min_right, d);
+         }
+
+         const float STOP_DIST  = 0.40f;  // m — hard stop
+         const float SLOW_DIST  = 0.80f;  // m — start slowing
+
+         if (min_front < STOP_DIST) {
+             v = 0;
+             w = (min_left > min_right) ? 0.4 : -0.4;
+         } else if (min_front < SLOW_DIST) {
+             v *= (min_front - STOP_DIST) / (SLOW_DIST - STOP_DIST);
+         }
+     }
 
      setSpeedVal(v, w);
 
-     if(datacounter % 5 == 0)
+     if(datacounter % 50 == 0)
      {
+         cout << "\nDesired position     " << x_des    << " " << y_des;
          cout << "\nRobot pos x/y/angle: " << x << " " << y << " " << fi;
          cout << "\nGyro raw/delta_deg:  " << gyro_now << " " << delta_deg;
          cout << "\nErrors lin/ang:      " << err_lin  << " " << err_ang;
          cout << "\nCommands v/w:        " << v        << " " << w<<std::endl;
-         cout << "\nDesired position     " << x_des    << " " << y_des;
          emit publishPosition(x, y, fi);
      }
 
@@ -478,32 +304,53 @@
 
  int robot::processThisLidar(const std::vector<LaserData>& laserData)
  {
+     //map.processLidarScan(copyOfLaserData);
+     emit publishMap(map.grid);
 
-     if (poseHistory.empty()) return 0;
+     auto pose = mcl.estimatePose();
 
-     // qDebug() << "Lidar called, poses:" << poseHistory.size()
-     //          << "points:" << copyOfLaserData.size();
+     if (mcl.isActive()) {
+         mcl.weightUpdate(laserData);
+         mcl.resample();
 
-     /*
-     for (const auto& point : copyOfLaserData) {
-         double dist_m = point.scanDistance / 1000.0;
-         if (dist_m < 0.05 || dist_m > 2.5 || (dist_m > 0.5 && dist_m < 0.7)) continue;
-         PoseStamp pose = interpolatePose(point.timestamp);
-         updateGrid(point, pose);
+         x = pose.x;  y = pose.y;  fi = pose.fi;
+         if (mcl.hasConverged()) {
+             mcl_converged_streak++;
+             cout << "[MCL] Converge streak: " << mcl_converged_streak
+                  << "/" << MCL_CONVERGE_REQUIRED << "\n";
+
+             if (mcl_converged_streak >= MCL_CONVERGE_REQUIRED) {
+                 auto pose = mcl.estimatePose();
+                 x = pose.x;  y = pose.y;  fi = pose.fi;
+                 mcl.deactivate();
+                 mcl_converged_streak = 0;
+                 setDesiredPosition(0.0, 0.0);
+             }
+         } else {
+             mcl_converged_streak = 0;
+         }
      }
 
-     int occupiedCount = 0;
-     for (int r = 0; r < GRID_SIZE; r++)
-         for (int c = 0; c < GRID_SIZE; c++)
-             if (grid[r][c] == OCCUPIED) occupiedCount++;
+     double var = mcl.particleVariance();
 
-     // qDebug() << "Occupied cells:" << occupiedCount;
+     if (lidarcounter % 10 == 0 && mcl.isActive()) {
 
-     */
-     emit publishMap(grid);
+         cout << "\n--- MCL ---";
+         cout << "\nParticles:  " << mcl.particleCount() << " | Variance: " << var;
+         cout << "\nBest pose:  x=" << pose.x << " y=" << pose.y << " fi=" << pose.fi;
+         cout << "\nConverged:  " << (var < MCL::VAR_CONVERGED ? "YES" : "NO")
+              << " | Dist to start: "
+              << std::sqrt(std::pow(x_des - pose.x, 2) + std::pow(y_des - pose.y, 2));
+         cout << "\n-----------\n" << std::endl;
+
+     }
+
+     emit publishVariance(var);
      copyOfLaserData = laserData;
      emit publishLidar(copyOfLaserData);
 
+
+     lidarcounter++;
      return 0;
  }
 
@@ -525,68 +372,3 @@
      return 0;
  }
  #endif
-
-
- void robot::worldToGrid(double wx, double wy, int &col, int &row)
- {
-     col = (int)std::floor((wx - gridOriginX) / CELL_SIZE);
-     row = (int)std::floor((wy - gridOriginY) / CELL_SIZE);
- }
-
- robot::PoseStamp robot::interpolatePose(unsigned ts)
- {
-     if (poseHistory.empty()) return {x, y, fi, ts};
-     if (ts <= poseHistory.front().timestamp) return poseHistory.front();
-     if (ts >= poseHistory.back().timestamp)  return poseHistory.back();
-
-     for (size_t i = 1; i < poseHistory.size(); i++) {
-         if (poseHistory[i].timestamp >= ts) {
-             PoseStamp a = poseHistory[i-1];
-             PoseStamp b = poseHistory[i];
-             double ratio = (double)(ts - a.timestamp) / (double)(b.timestamp - a.timestamp);
-             double dfi = b.fi - a.fi;
-             while (dfi >  M_PI) dfi -= 2*M_PI;
-             while (dfi < -M_PI) dfi += 2*M_PI;
-             return { a.x + ratio*(b.x - a.x),
-                      a.y + ratio*(b.y - a.y),
-                      a.fi + ratio*dfi,
-                      ts };
-         }
-     }
-     return poseHistory.back();
- }
-
- void robot::bresenham(int c0, int r0, int c1, int r1)
- {
-     int dc = std::abs(c1-c0), dr = std::abs(r1-r0);
-     int sc = (c0 < c1) ? 1 : -1;
-     int sr = (r0 < r1) ? 1 : -1;
-     int err = dc - dr;
-
-     while (true) {
-         if (c0 == c1 && r0 == r1) break;
-         if (c0 >= 0 && c0 < GRID_SIZE && r0 >= 0 && r0 < GRID_SIZE)
-             if (grid[r0][c0] == UNKNOWN) //grid[r0][c0] != OCCUPIED || grid[r0][c0] != BUFFER
-                 grid[r0][c0] = FREE;
-         int e2 = 2 * err;
-         if (e2 > -dr) { err -= dr; c0 += sc; }
-         if (e2 <  dc) { err += dc; r0 += sr; }
-     }
- }
-
- void robot::updateGrid(const LaserData& point, const PoseStamp& pose)
- {
-     double dist_m = point.scanDistance / 1000.0;
-     double global_angle = pose.fi - (point.scanAngle * M_PI / 180.0);
-     double x_gi = pose.x + dist_m * std::cos(global_angle);
-     double y_gi = pose.y + dist_m * std::sin(global_angle);
-
-     int col_r, row_r, col_h, row_h;
-     worldToGrid(pose.x, pose.y, col_r, row_r);
-     worldToGrid(x_gi,   y_gi,   col_h, row_h);
-
-     bresenham(col_r, row_r, col_h, row_h);
-
-     if (col_h >= 0 && col_h < GRID_SIZE && row_h >= 0 && row_h < GRID_SIZE)
-         grid[row_h][col_h] = OCCUPIED;
- }
