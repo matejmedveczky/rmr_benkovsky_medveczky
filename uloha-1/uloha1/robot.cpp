@@ -106,20 +106,40 @@
      // fi = 0;
      x_des = 0.0;
      y_des = 0.0;
+     goal_final_x = 0.0;
+     goal_final_y = 0.0;
+     going_home_after_localization = false;
+     nav_state = NavState::NAVIGATE_PATH;
+     avoid_front_clear_cycles = 0;
      path_point = 0;
      path.clear();
  }
 
  void robot::returnHome(){
-     setDesiredPosition(0.0, 0.0);
- }
+      setDesiredPosition(0.0, 0.0);
+  }
 
- void robot::setDesiredPosition(double x_des, double y_des)
+ void robot::planPathTo(double x_goal, double y_goal, bool update_final_goal)
  {
-     map.floodMap(x_des, y_des, x, y);
+     nav_state = NavState::NAVIGATE_PATH;
+     avoid_front_clear_cycles = 0;
 
-     path = map.calculatePath(x, y); //x_des, y_des
+     if (update_final_goal) {
+         goal_final_x = x_goal;
+         goal_final_y = y_goal;
+     }
+
+     map.floodMap(x_goal, y_goal, x, y);
+
+     path = map.calculatePath(x, y);
      path_point = 0;
+
+     if (path.empty()) {
+         this->x_des = x_goal;
+         this->y_des = y_goal;
+         cout << "No path found, direct target world (" << this->x_des << "," << this->y_des << ")" << endl;
+         return;
+     }
 
      int next_idx = path.size() > 1 ? 1 : 0;
      auto [next_x, next_y] = path[next_idx];
@@ -128,12 +148,22 @@
      this->y_des = next_y;
 
      cout << "First waypoint world (" << this->x_des << "," << this->y_des << ")" << endl;
-
  }
 
- int robot::processThisRobot(const TKobukiData &robotdata)
+ bool robot::isNear(double tx, double ty, double tol) const
  {
+     double dx = tx - x;
+     double dy = ty - y;
+     return std::sqrt(dx * dx + dy * dy) < tol;
+ }
 
+  void robot::setDesiredPosition(double x_des, double y_des)
+  {
+      planPathTo(x_des, y_des, true);
+  }
+
+  int robot::processThisRobot(const TKobukiData &robotdata)
+  {
      long double tick = robotCom.getTickToMeter();
 
      if(first_tick) {
@@ -171,17 +201,22 @@
      Map::PoseStamp ps = {x, y, fi, robotdata.synctimestamp};
      map.addPose(ps);
 
-     if (mcl.isActive()) {
-         mcl.motionUpdate(step_dist, delta_fi);
-         auto pose = mcl.estimatePose();
-         x = pose.x;  y = pose.y;  fi = pose.fi;
-     } else {
-         fi += delta_fi;
-         while(fi >  M_PI) fi -= 2*M_PI;
-         while(fi < -M_PI) fi += 2*M_PI;
-         x += step_dist * std::cos(fi);
-         y += step_dist * std::sin(fi);
-     }
+      bool mcl_active_for_motion = false;
+      {
+          std::lock_guard<std::mutex> lock(mclMutex);
+          mcl_active_for_motion = mcl.isActive();
+          if (mcl_active_for_motion) {
+              mcl.motionUpdate(step_dist, delta_fi);
+          }
+      }
+
+      if (!mcl_active_for_motion) {
+          fi += delta_fi;
+          while(fi >  M_PI) fi -= 2*M_PI;
+          while(fi < -M_PI) fi += 2*M_PI;
+          x += step_dist * std::cos(fi);
+          y += step_dist * std::sin(fi);
+      }
 
      double dx      = x_des - x;
      double dy      = y_des - y;
@@ -237,25 +272,15 @@
          }
      }
 
-     prev_v = v;
-     prev_w = w;
+      bool mcl_active = false;
+      {
+          std::lock_guard<std::mutex> lock(mclMutex);
+          mcl_active = mcl.isActive();
+      }
 
-     if (mcl.isActive()) {
-         double var = mcl.particleVariance();
-         double confidence = std::exp(-var / MCL::VAR_HIGH);
-         v = v * confidence;
-         v = std::clamp(v, -80.0, 80.0);
-         w = std::clamp(w, -0.2, 0.2);
-     }
-     else {
-         v = std::clamp(v, -400.0, 400.0);
-         w = std::clamp(w, -0.5, 0.5);
-     }
-
-     if (!copyOfLaserData.empty() && mcl.isActive()) {
-         // Check forward cone (±30°) and sides
-         float min_front = 2.5f, min_left = 2.5f, min_right = 2.5f;
-         for (const auto& p : copyOfLaserData) {
+      if (mcl_active) {
+          float min_front = 2.5f, min_left = 2.5f, min_right = 2.5f;
+          for (const auto& p : copyOfLaserData) {
              float d = p.scanDistance / 1000.0f;
              if (d < 0.05f || d > 2.5f) continue;
              float a = p.scanAngle;
@@ -273,7 +298,150 @@
          } else if (min_front < SLOW_DIST) {
              v *= (min_front - STOP_DIST) / (SLOW_DIST - STOP_DIST);
          }
-     }
+
+      } else {
+          int close_count = 0;
+          int front_block_count = 0;
+          float min_front = 2.5f, min_left = 2.5f, min_right = 2.5f;
+          for (const auto& p : copyOfLaserData) {
+              float d = p.scanDistance / 1000.0f;
+              if (d < 0.05f || d > 2.5f) continue;
+              float a = p.scanAngle;
+              if      (a < 30  || a > 330) {
+                  min_front = std::min(min_front, d);
+                  if (d < 0.25f) close_count++;
+                  if (d < 0.30f) front_block_count++;
+              }
+              else if (a >= 30 && a < 180) {
+                  min_right = std::min(min_right, d);
+              }
+              else {
+                  min_left = std::min(min_left, d);
+              }
+          }
+
+          bool should_reinit_mcl = false;
+          bool map_expects_wall = false;
+          bool evaluated_reinit = false;
+          bool cooldown_ready = false;
+          int cycles_since_last_reinit = 0;
+          {
+              std::lock_guard<std::mutex> lock(mclMutex);
+              if (!mcl.isActive()) {
+                  evaluated_reinit = true;
+                  int col, row;
+                  map.worldToGrid(x, y, col, row);
+                  map_expects_wall = false;
+                  if (col >= 0 && col < Map::GRID_SIZE && row >= 0 && row < Map::GRID_SIZE) {
+                      const int CHECK_RADIUS = 4;
+                      for (int dr = -CHECK_RADIUS; dr <= CHECK_RADIUS && !map_expects_wall; dr++) {
+                          for (int dc = -CHECK_RADIUS; dc <= CHECK_RADIUS && !map_expects_wall; dc++) {
+                              int nr = row + dr, nc = col + dc;
+                              if (nr >= 0 && nr < Map::GRID_SIZE && nc >= 0 && nc < Map::GRID_SIZE) {
+                                  if (map.grid[nr][nc] == Map::OCCUPIED || map.grid[nr][nc] == Map::BUFFER) {
+                                      map_expects_wall = true;
+                                  }
+                              }
+                          }
+                      }
+                  }
+
+                  cycles_since_last_reinit = datacounter - last_mcl_reinit_datacounter;
+                  cooldown_ready = (cycles_since_last_reinit >= MCL_REINIT_COOLDOWN_CYCLES);
+
+                  if (close_count >= 5 && !map_expects_wall && cooldown_ready) {
+                      mcl.init(map);
+                      mcl_converged_streak = 0;
+                      last_mcl_reinit_datacounter = datacounter;
+                      should_reinit_mcl = true;
+                  }
+              }
+          }
+
+          if (should_reinit_mcl) {
+              cout << "[MCL] Unexpected close obstacle - " << close_count
+                   << " points under 25cm, map expects wall: NO - reinitializing\n";
+          } else if (close_count >= 5 && evaluated_reinit) {
+              cout << "[MCL] Reinit skipped - " << close_count
+                   << " points under 25cm, map expects wall: " << (map_expects_wall ? "YES" : "NO")
+                   << ", cooldown: " << cycles_since_last_reinit << "/" << MCL_REINIT_COOLDOWN_CYCLES
+                   << " cycles\n";
+          }
+
+          bool front_blocked_strong = (front_block_count >= 5 && min_front < 0.35f);
+          if (!going_home_after_localization && nav_state == NavState::NAVIGATE_PATH && front_blocked_strong && !map_expects_wall) {
+              nav_state = NavState::AVOID_OBSTACLE;
+              avoid_side = (min_left >= min_right) ? AvoidSide::LEFT : AvoidSide::RIGHT;
+              avoid_front_clear_cycles = 0;
+              cout << "[NAV] Entering AVOID_OBSTACLE: front blocked, map expects wall=NO, side="
+                   << (avoid_side == AvoidSide::LEFT ? "LEFT" : "RIGHT") << "\n";
+          }
+
+          if (nav_state == NavState::AVOID_OBSTACLE) {
+              bool front_too_close = (min_front < 0.28f || front_block_count >= 5);
+              if (front_too_close) {
+                  v = 0.0;
+                  w = (avoid_side == AvoidSide::LEFT) ? -0.55 : 0.55;
+              } else {
+                  v = 90.0;
+                  w = (avoid_side == AvoidSide::LEFT) ? -0.18 : 0.18;
+              }
+
+              if (min_front > 0.55f && close_count <= 1) {
+                  avoid_front_clear_cycles++;
+              } else {
+                  avoid_front_clear_cycles = 0;
+              }
+
+              if (avoid_front_clear_cycles >= 8) {
+                  nav_state = NavState::NAVIGATE_PATH;
+                  avoid_front_clear_cycles = 0;
+                  cout << "[NAV] Leaving AVOID_OBSTACLE: front clear, replanning to final goal ("
+                       << goal_final_x << ", " << goal_final_y << ")\n";
+                  setDesiredPosition(goal_final_x, goal_final_y);
+              }
+          } else {
+              bool is_last_waypoint = path.empty() || path_point >= (int)path.size() - 1;
+              double tolerance = is_last_waypoint ? 0.02 : 0.15;
+
+              if (err_lin < tolerance) {
+                  if (is_last_waypoint) {
+                      v = 0; w = 0;
+                  } else {
+                      path_point++;
+                      auto [next_x, next_y] = path[path_point];
+                      this->x_des = next_x;
+                      this->y_des = next_y;
+                      cout << "Advancing to waypoint " << path_point
+                           << ": (" << this->x_des << "," << this->y_des << ")\n";
+                  }
+              } else {
+                  if (std::abs(err_ang) > 0.9) {
+                      v = 0;
+                      w = Kp_ang * err_ang;
+                  } else {
+                      v = Kp_lin * err_lin * 1000.0;
+                      w = Kp_ang * err_ang;
+                  }
+
+                  if ((v - prev_v) > 5)         v = prev_v + 5;
+                  if ((w - prev_w) > 0.05)      w = prev_w + 0.05;
+                  else if ((w - prev_w) < -0.05) w = prev_w - 0.05;
+              }
+          }
+
+          if (going_home_after_localization && isNear(0.0, 0.0, 0.08)) {
+              going_home_after_localization = false;
+              if (!isNear(goal_final_x, goal_final_y, 0.08)) {
+                  cout << "[NAV] Home reached, switching to final goal ("
+                       << goal_final_x << ", " << goal_final_y << ")\n";
+                  planPathTo(goal_final_x, goal_final_y, false);
+              }
+          }
+
+          v = std::clamp(v, -400.0, 400.0);
+          w = std::clamp(w, -0.5, 0.5);
+      }
 
      setSpeedVal(v, w);
 
@@ -303,74 +471,79 @@
      return 0;
  }
 
- int robot::processThisLidar(const std::vector<LaserData>& laserData)
- {
-     //map.processLidarScan(copyOfLaserData);
-     emit publishMap(map.grid);
+  int robot::processThisLidar(const std::vector<LaserData>& laserData)
+  {
+      //map.processLidarScan(copyOfLaserData);
+      emit publishMap(map.grid);
 
-     auto pose = mcl.estimatePose();
+      MCL::Pose pose{};
+      double var = 0.0;
+      int particle_count = 0;
+      bool mcl_active = false;
+      bool converged_now = false;
+      bool pose_invalid = false;
+      bool reached_convergence = false;
 
-     if (mcl.isActive()) {
-         mcl.weightUpdate(laserData);
-         mcl.resample();
+      {
+          std::lock_guard<std::mutex> lock(mclMutex);
 
-         x = pose.x;  y = pose.y;  fi = pose.fi;
-         if (mcl.hasConverged()) {
-             mcl_converged_streak++;
-             cout << "[MCL] Converge streak: " << mcl_converged_streak
-                  << "/" << MCL_CONVERGE_REQUIRED << "\n";
+          if (mcl.isActive()) {
+              mcl.weightUpdate(laserData);
+              mcl.resample();
 
-             if (mcl_converged_streak >= MCL_CONVERGE_REQUIRED) {
-                 auto pose = mcl.estimatePose();
-                 x = pose.x;  y = pose.y;  fi = pose.fi;
+              // Task 2: use pose estimated from current-cycle post-resample state
+              pose = mcl.estimatePose();
 
-                 if(mcl_cooldown > 0){
-                     mcl_cooldown--;
-                     cout << "[MCL] Cool down remaining: " << mcl_cooldown;
-                 } else {
-                     if(mcl.first_deactivate){
-                         setDesiredPosition(0.0, 0.0);
-                     }
-                     mcl.deactivate();
-                     mcl_converged_streak = 0;
-                 }
-             }
-         } else {
-             mcl_converged_streak = 0;
-         }
-     }
-     else {
-         double dx  = pose.x - x;
-         double dy  = pose.y - y;
-         double div = std::sqrt(dx*dx + dy*dy);
+              // Pose from best particle — filter handles degeneracy internally.
+              x = pose.x; y = pose.y; fi = pose.fi;
 
-         if (div > MCL_DIVERGE_WARN) {
-             mcl_diverge_count++;
-             cout << "[MCL] Background divergence: " << div
-                  << "m (streak " << mcl_diverge_count << ")\n";
+              converged_now = mcl.hasConverged();
+              if (converged_now) {
+                  mcl_converged_streak++;
 
-             if (mcl_diverge_count >= MCL_DIVERGE_STREAK) {
-                 if (div > MCL_DIVERGE_SNAP) {
-                     mcl.activate();
-                     mcl_cooldown = 100;
-                 }
-                 mcl_diverge_count = 0;
-             }
-         } else {
-             mcl_diverge_count = 0;
-         }
-     }
+                  if (mcl_converged_streak >= MCL_CONVERGE_REQUIRED) {
+                      x = pose.x; y = pose.y; fi = pose.fi;
+                      mcl.deactivate();
+                      mcl_converged_streak = 0;
+                      reached_convergence = true;
+                  }
+              } else {
+                  mcl_converged_streak = 0;
+              }
+          } else {
+              converged_now = false;
+          }
 
-     double var = mcl.particleVariance();
+          // Logging/GUI values must reflect the same post-update cycle state
+          var = mcl.particleVariance();
+          mcl_active = mcl.isActive();
+          particle_count = mcl.particleCount();
+      }
 
-     if (lidarcounter % 10 == 0 && mcl.isActive()) {
+      if (pose_invalid) {
+          cout << "[MCL] Best particle isolated — holding previous pose\n";
+      }
 
-         cout << "\n--- MCL ---";
-         cout << "\nParticles:  " << mcl.particleCount() << " | Variance: " << var;
-         cout << "\nBest pose:  x=" << pose.x << " y=" << pose.y << " fi=" << pose.fi;
-         cout << "\nConverged:  " << (var < MCL::VAR_CONVERGED ? "YES" : "NO")
-              << " | Dist to start: "
-              << std::sqrt(std::pow(x_des - pose.x, 2) + std::pow(y_des - pose.y, 2));
+      if (mcl_active && converged_now) {
+          cout << "[MCL] Converge streak: " << mcl_converged_streak
+               << "/" << MCL_CONVERGE_REQUIRED << "\n";
+      }
+
+      if (reached_convergence) {
+          going_home_after_localization = true;
+          cout << "[NAV] MCL converged, heading to home (0,0) before final goal\n";
+          planPathTo(0.0, 0.0, false);
+      }
+
+      if (lidarcounter % 10 == 0 && mcl_active) {
+
+          cout << "\n--- MCL ---";
+          cout << "\nParticles:  " << particle_count << " | Variance: " << var;
+          cout << "\nBest pose:  x=" << pose.x << " y=" << pose.y << " fi=" << pose.fi;
+          cout << "\nConverged:  " << (converged_now ? "YES" : "NO")
+               << " (streak " << mcl_converged_streak << "/" << MCL_CONVERGE_REQUIRED << ")"
+               << " | Dist to start: "
+               << std::sqrt(std::pow(x_des - pose.x, 2) + std::pow(y_des - pose.y, 2));
          cout << "\n-----------\n" << std::endl;
 
      }

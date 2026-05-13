@@ -9,8 +9,7 @@
 
 class MCL {
 public:
-    // ── Public types ────────────────────────────────────────────────
-    struct Particle { double x, y, fi, weight; };
+    struct Particle { double x, y, fi, weight; bool valid = true; };
     struct Pose     { double x, y, fi; };
     bool first_deactivate = true;
 

@@ -6,6 +6,7 @@
 #include <deque>
 #include <cmath>
 #include <fstream>
+#include <mutex>
 #include "map.h"
 #include "mcl.h"
 
@@ -84,6 +85,15 @@ class robot : public QObject {
 
   double x_des;
   double y_des;
+  double goal_final_x = 0.0;
+  double goal_final_y = 0.0;
+  bool going_home_after_localization = false;
+
+  enum class NavState { NAVIGATE_PATH, AVOID_OBSTACLE };
+  enum class AvoidSide { LEFT, RIGHT };
+  NavState nav_state = NavState::NAVIGATE_PATH;
+  AvoidSide avoid_side = AvoidSide::LEFT;
+  int avoid_front_clear_cycles = 0;
   int goal_grid_x;
   int goal_grid_y;
   double err_lin_prev = 0, err_ang_prev = 0;
@@ -91,6 +101,7 @@ class robot : public QObject {
 
   Map map;
   MCL mcl;
+  std::mutex mclMutex;
 
   double max_v_dt = 400/2;
   // double integral_lin = 0, integral_ang = 0;
@@ -98,6 +109,8 @@ class robot : public QObject {
   /// toto su callbacky co sa sa volaju s novymi datami
   int processThisLidar(const std::vector<LaserData> &laserData);
   int processThisRobot(const TKobukiData &robotdata);
+  void planPathTo(double x_goal, double y_goal, bool update_final_goal);
+  bool isNear(double tx, double ty, double tol) const;
 #ifndef DISABLE_OPENCV
   int processThisCamera(cv::Mat cameraData);
 #endif
@@ -111,11 +124,14 @@ class robot : public QObject {
   libRobot robotCom;
 
   /// pomocne premenne... moc nerieste naco su
-  int datacounter;
-  int lidarcounter;
+  int datacounter = 0;
+  int lidarcounter = 0;
   int mcl_converged_streak = 0;
-  double mcl_cooldown;
+  int last_mcl_reinit_datacounter = -1000000;
+
+  int stall_count = 0;
   static const int MCL_CONVERGE_REQUIRED = 10;  // must be converged for 10 consecutive LIDAR scans
+  static const int MCL_REINIT_COOLDOWN_CYCLES = 50;
 #ifndef DISABLE_OPENCV
   bool useCamera1;
   int actIndex;

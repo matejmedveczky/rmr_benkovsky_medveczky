@@ -106,6 +106,7 @@ void MCL::scatterParticles(int n)
         p.y      = r * CELL_SIZE + map_ptr->originY;
         p.fi     = angle_dist(rng);
         p.weight = 1.0 / n;
+        p.valid  = true;
         particles.push_back(p);
     }
 }
@@ -152,8 +153,7 @@ void MCL::motionUpdate(double step_dist, double delta_fi)
         bool out_of_bounds = (col < 0 || col >= GRID_SIZE || row < 0 || row >= GRID_SIZE);
         bool in_wall       = !out_of_bounds && (map_ptr->grid[row][col] == Map::OCCUPIED ||
                                           map_ptr->grid[row][col] == Map::BUFFER);
-        if (out_of_bounds || in_wall)
-            p.weight = 1e-9;
+        p.valid = !(out_of_bounds || in_wall);
     }
 }
 
@@ -167,9 +167,15 @@ void MCL::weightUpdate(const std::vector<LaserData>& laser)
 {
     if (!active || laser.empty() || particles.empty()) return;
 
-    double weight_sum = 0.0;
+    constexpr double INVALID_WEIGHT = 1e-12;
+    double valid_weight_sum = 0.0;
 
     for (auto& p : particles) {
+        if (!p.valid) {
+            p.weight = INVALID_WEIGHT;
+            continue;
+        }
+
         double error    = 0.0;
         int    rays     = 0;
 
@@ -194,13 +200,13 @@ void MCL::weightUpdate(const std::vector<LaserData>& laser)
 
         if (rays > 0) error /= rays;
         p.weight   = 1.0 / (1.0 + error);
-        weight_sum += p.weight;
+        valid_weight_sum += p.weight;
     }
 
-    // Normalize
-    if (weight_sum > 1e-12)
+    // Normalize valid particles only; invalid particles keep tiny weight.
+    if (valid_weight_sum > 1e-18 && std::isfinite(valid_weight_sum))
         for (auto& p : particles)
-            p.weight /= weight_sum;
+            if (p.valid) p.weight /= valid_weight_sum;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -223,8 +229,16 @@ void MCL::resample()
     for (int i = 1; i < (int)particles.size(); i++)
         cum[i] = cum[i-1] + particles[i].weight;
 
-    // Stochastic universal sampling
-    std::uniform_real_distribution<double> start_dist(0.0, 1.0 / n_resample);
+    double cum_total = cum.back();
+    if (!(cum_total > 0.0) || !std::isfinite(cum_total)) {
+        double w = 1.0 / (double)particles.size();
+        cum[0] = w;
+        for (int i = 1; i < (int)particles.size(); i++)
+            cum[i] = cum[i-1] + w;
+        cum_total = cum.back();
+    }
+
+    std::uniform_real_distribution<double> start_dist(0.0, cum_total / n_resample);
     double start = start_dist(rng);
     int    idx   = 0;
 
@@ -232,7 +246,7 @@ void MCL::resample()
     next.reserve(N);
 
     for (int i = 0; i < n_resample; i++) {
-        double target = start + (double)i / n_resample;
+        double target = start + (double)i * (cum_total / n_resample);
         while (idx < (int)cum.size() - 1 && cum[idx] < target) idx++;
         next.push_back(particles[idx]);
     }
@@ -248,6 +262,7 @@ void MCL::resample()
             p.y = r * CELL_SIZE + map_ptr->originY;
             p.fi = angle_dist(rng);
             p.weight = 1.0 / N;
+            p.valid = true;
             next.push_back(p);
         }
     }
