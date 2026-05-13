@@ -50,6 +50,8 @@ public:
     int particleCount() const { return (int)particles.size(); }
     int distFieldAt(int row, int col) const { return dist_field[row][col]; }
 
+    bool isPoseValid() const { return last_pose_valid; }
+
 private:
     bool   active = false;
     int    N      = N_DEFAULT;
@@ -59,6 +61,8 @@ private:
     int    dist_field[GRID_SIZE][GRID_SIZE];
 
     const Map* map_ptr = nullptr;
+
+    mutable bool last_pose_valid = false;
 
     std::mt19937 rng;
 

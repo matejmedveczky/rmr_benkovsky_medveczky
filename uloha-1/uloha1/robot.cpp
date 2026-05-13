@@ -264,13 +264,13 @@
              float min_any = 2.5f;
              for (const auto& p : copyOfLaserData) {
                  float d = p.scanDistance / 1000.0f;
-                 if (d < 0.05f || d > 2.5f) continue;
+                 if (d > 2.5f) continue;
                  float a = p.scanAngle;
-                 if (a > 30 && a < 330) continue;  // only ±30° forward cone
+                 if (a > 40 && a < 320) continue;  // only ±30° forward cone
                  min_any = std::min(min_any, d);
              }
 
-             if (min_any < 0.30f ) { //&& !map_expects_wall
+             if (min_any < 0.25f ) { //&& !map_expects_wall
                  cout << "[MCL] Unexpected wall at " << min_any << "m - reinitializing\n";
                  mcl.reinit();
                  mcl_converged_streak = 0;
@@ -348,10 +348,15 @@
      auto pose = mcl.estimatePose();
 
      if (mcl.isActive()) {
-         mcl.weightUpdate(laserData);       // 1. score particles
-         auto pose = mcl.estimatePose();    // 2. read best particle NOW
-         x = pose.x; y = pose.y; fi = pose.fi;  // 3. write pose
-         mcl.resample();                    // 4. resample AFTER writing pose
+         mcl.weightUpdate(laserData);
+
+         if (mcl.isPoseValid()) {
+             x = pose.x; y = pose.y; fi = pose.fi;
+         } else {
+             cout << "[MCL] Best particle isolated — holding previous pose\n";
+         }
+
+         mcl.resample();
 
          if (mcl.hasConverged()) {
              mcl_converged_streak++;

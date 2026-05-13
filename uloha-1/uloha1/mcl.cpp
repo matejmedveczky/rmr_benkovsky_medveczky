@@ -146,7 +146,7 @@ void MCL::weightUpdate(const std::vector<LaserData>& laser)
 
         for (int i = 0; i < (int)laser.size(); i += 10) {
             double dist_m = laser[i].scanDistance / 1000.0;
-            if (dist_m < 0.05 || dist_m > 2.5) continue;
+            if (dist_m < 0.05 || dist_m > 2.5 || (dist_m > 0.5 && dist_m < 0.7)) continue;
 
             double angle = p.fi - (laser[i].scanAngle * M_PI / 180.0);
             double hit_x = p.x  + dist_m * std::cos(angle);
@@ -221,13 +221,6 @@ void MCL::resample()
     particles = std::move(next);
 }
 
-MCL::Pose MCL::estimatePose() const
-{
-    if (particles.empty()) return {0, 0, 0};
-    const auto& best = *std::max_element(particles.begin(), particles.end(),
-                                         [](const Particle& a, const Particle& b){ return a.weight < b.weight; });
-    return {best.x, best.y, best.fi};
-}
 
 double MCL::particleVariance() const
 {
@@ -249,6 +242,29 @@ double MCL::particleVariance() const
         var += dx*dx + dy*dy;
     }
     return var / n;
+}
+
+MCL::Pose MCL::estimatePose() const
+{
+    if (particles.empty()) return {0, 0, 0};
+
+    const auto& best = *std::max_element(particles.begin(), particles.end(),
+                                         [](const Particle& a, const Particle& b){ return a.weight < b.weight; });
+
+    // Count neighbors within 0.5m
+    int neighbors = 0;
+    for (const auto& p : particles) {
+        double dx = p.x - best.x, dy = p.y - best.y;
+        if (std::sqrt(dx*dx + dy*dy) < 0.5) neighbors++;
+    }
+
+    if (neighbors < 5) {
+        last_pose_valid = false;  // signal to caller: don't use this
+        return {best.x, best.y, best.fi};
+    }
+
+    last_pose_valid = true;
+    return {best.x, best.y, best.fi};
 }
 
 bool MCL::hasConverged() const
