@@ -443,6 +443,9 @@
           w = std::clamp(w, -0.5, 0.5);
       }
 
+      prev_v = v;
+      prev_w = w;
+
      setSpeedVal(v, w);
 
      if(datacounter % 50 == 0)
