@@ -109,6 +109,8 @@ class robot : public QObject {
   int datacounter;
   int lidarcounter;
   int mcl_converged_streak = 0;
+
+  int stall_count = 0;
   static const int MCL_CONVERGE_REQUIRED = 10;  // must be converged for 10 consecutive LIDAR scans
 #ifndef DISABLE_OPENCV
   bool useCamera1;

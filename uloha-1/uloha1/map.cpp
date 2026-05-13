@@ -8,20 +8,12 @@
 
 using std::cout;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Lifecycle
-// ─────────────────────────────────────────────────────────────────────────────
-
 Map::Map()
 {
     cout << "[Map] Constructor start\n" << std::flush;
     memset(grid, 0, sizeof(grid));
     cout << "[Map] Constructor done\n" << std::flush;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// I/O
-// ─────────────────────────────────────────────────────────────────────────────
 
 void Map::saveMap(const std::string& filename)
 {
@@ -56,9 +48,6 @@ void Map::loadMap(const std::string& filename)
     cout << "[Map] Loaded\n";
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Map building
-// ─────────────────────────────────────────────────────────────────────────────
 
 void Map::addPose(const PoseStamp& ps)
 {
@@ -79,19 +68,11 @@ void Map::processLidarScan(const std::vector<LaserData>& scan)
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Coordinate utilities
-// ─────────────────────────────────────────────────────────────────────────────
-
 void Map::worldToGrid(double wx, double wy, int& col, int& row) const
 {
     col = (int)std::floor((wx - originX) / CELL_SIZE);
     row = (int)std::floor((wy - originY) / CELL_SIZE);
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Map queries
-// ─────────────────────────────────────────────────────────────────────────────
 
 std::vector<int> Map::occDir(int r, int c) const
 {
@@ -102,10 +83,6 @@ std::vector<int> Map::occDir(int r, int c) const
         grid[r][c+1] == OCCUPIED ? 1 : 0
     };
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Obstacle inflation
-// ─────────────────────────────────────────────────────────────────────────────
 
 void Map::bufferMap()
 {
@@ -129,10 +106,6 @@ void Map::bufferMap()
             }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Path planning
-// ─────────────────────────────────────────────────────────────────────────────
-
 void Map::floodMap(double x_des, double y_des, double robot_x, double robot_y)
 {
     double x_offset = GRID_OFFSET_X * CELL_SIZE;
@@ -143,7 +116,6 @@ void Map::floodMap(double x_des, double y_des, double robot_x, double robot_y)
     int x_grid     = (int)((robot_x + x_offset) / CELL_SIZE);
     int y_grid     = (int)((robot_y + y_offset) / CELL_SIZE);
 
-    // Reset flood values, preserve obstacles
     for (int i = 0; i < GRID_SIZE; i++)
         for (int j = 0; j < GRID_SIZE; j++)
             if (grid[i][j] > BUFFER) grid[i][j] = FREE;
@@ -234,7 +206,6 @@ std::vector<std::pair<double,double>> Map::calculatePath(double start_x_world, d
         }
     }
 
-    // Convert to world coords, keep only direction-change waypoints
     std::vector<std::pair<double,double>> world_path;
     auto toWorld = [&](int gx, int gy) -> std::pair<double,double> {
         return { (gx - GRID_OFFSET_X) * CELL_SIZE,
@@ -257,10 +228,6 @@ std::vector<std::pair<double,double>> Map::calculatePath(double start_x_world, d
     cout << "[Map] Path: " << world_path.size() << " waypoints\n";
     return world_path;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Private helpers
-// ─────────────────────────────────────────────────────────────────────────────
 
 Map::PoseStamp Map::interpolatePose(unsigned ts) const
 {

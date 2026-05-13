@@ -253,6 +253,30 @@
 
      } else {
          // normal navigation controller
+         if (!mcl.isActive()) {
+             // Unexpected wall detection
+             int col, row;
+             map.worldToGrid(x, y, col, row);
+             bool map_expects_wall = (col >= 0 && col < Map::GRID_SIZE &&
+                                      row >= 0 && row < Map::GRID_SIZE &&
+                                      mcl.distFieldAt(row, col) < 4);
+
+             float min_any = 2.5f;
+             for (const auto& p : copyOfLaserData) {
+                 float d = p.scanDistance / 1000.0f;
+                 if (d < 0.05f || d > 2.5f) continue;
+                 float a = p.scanAngle;
+                 if (a > 30 && a < 330) continue;  // only ±30° forward cone
+                 min_any = std::min(min_any, d);
+             }
+
+             if (min_any < 0.30f ) { //&& !map_expects_wall
+                 cout << "[MCL] Unexpected wall at " << min_any << "m - reinitializing\n";
+                 mcl.reinit();
+                 mcl_converged_streak = 0;
+             }
+         }
+
          bool is_last_waypoint = path.empty() || path_point >= (int)path.size() - 1;
          double tolerance = is_last_waypoint ? 0.02 : 0.15;
 

@@ -8,10 +8,6 @@
 
 using std::cout;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Lifecycle
-// ─────────────────────────────────────────────────────────────────────────────
-
 MCL::MCL() : rng(std::random_device{}())
 {
     cout << "[MCL] Constructor start\n" << std::flush;
@@ -40,15 +36,15 @@ void MCL::init(const Map& map)
 void MCL::deactivate()
 {
     active = false;
-    //particles.clear();
-    //free_cells.clear();
     cout << "[MCL] Deactivated - odometry takes over\n";
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Internal: BFS distance field
-// dist_field[r][c] = distance in cells to nearest OCCUPIED cell
-// ─────────────────────────────────────────────────────────────────────────────
+void MCL::reinit()
+{
+    scatterParticles(N);
+    active = true;
+    cout << "[MCL] Reinitialized for recovery\n";
+}
 
 void MCL::computeDistanceField()
 {
@@ -82,10 +78,6 @@ void MCL::computeDistanceField()
     cout << "[MCL] Distance field computed\n";
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Internal: scatter N particles uniformly over free cells
-// ─────────────────────────────────────────────────────────────────────────────
-
 void MCL::scatterParticles(int n)
 {
     particles.clear();
@@ -105,20 +97,11 @@ void MCL::scatterParticles(int n)
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Internal: coordinate conversion
-// ─────────────────────────────────────────────────────────────────────────────
-
 void MCL::worldToGrid(double wx, double wy, int& col, int& row) const
 {
     col = (int)std::floor((wx - map_ptr->originX) / CELL_SIZE);
     row = (int)std::floor((wy - map_ptr->originY) / CELL_SIZE);
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// motionUpdate — called every robot tick
-// Applies odometric delta + noise to every particle
-// ─────────────────────────────────────────────────────────────────────────────
 
 void MCL::motionUpdate(double step_dist, double delta_fi)
 {
@@ -141,7 +124,6 @@ void MCL::motionUpdate(double step_dist, double delta_fi)
         p.x += noisy_dist * std::cos(p.fi);
         p.y += noisy_dist * std::sin(p.fi);
 
-        // Penalize particles that walked into walls — they'll die at resample
         int col, row;
         worldToGrid(p.x, p.y, col, row);
         bool out_of_bounds = (col < 0 || col >= GRID_SIZE || row < 0 || row >= GRID_SIZE);
@@ -151,12 +133,6 @@ void MCL::motionUpdate(double step_dist, double delta_fi)
             p.weight = 1e-9;
     }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// weightUpdate — called every LIDAR callback
-// Scores each particle by how well its projected LIDAR matches the map.
-// Uses every 10th ray. Weight = 1 / (1 + mean_distance_error_in_metres)
-// ─────────────────────────────────────────────────────────────────────────────
 
 void MCL::weightUpdate(const std::vector<LaserData>& laser)
 {
@@ -180,9 +156,9 @@ void MCL::weightUpdate(const std::vector<LaserData>& laser)
             worldToGrid(hit_x, hit_y, col, row);
 
             if (col >= 0 && col < GRID_SIZE && row >= 0 && row < GRID_SIZE)
-                error += dist_field[row][col] * CELL_SIZE;  // cells → metres
+                error += dist_field[row][col] * CELL_SIZE;
             else
-                error += 2.0;  // out-of-bounds: max plausible penalty
+                error += 2.0;
 
             rays++;
         }
@@ -198,27 +174,20 @@ void MCL::weightUpdate(const std::vector<LaserData>& laser)
             p.weight /= weight_sum;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// resample — stochastic universal sampling + 5% random injection + AMCL resize
-// ─────────────────────────────────────────────────────────────────────────────
-
 void MCL::resample()
 {
     if (!active || particles.empty()) return;
 
-    // AMCL: adjust N based on variance
     double var = particleVariance();
     double inject_ratio = std::clamp(var / VAR_HIGH, 0.01, 0.05);  // 1-5%
     int n_random   = std::max(1, (int)(N * inject_ratio));
     int n_resample = N - n_random;
 
-    // Build cumulative weight array
     std::vector<double> cum(particles.size());
     cum[0] = particles[0].weight;
     for (int i = 1; i < (int)particles.size(); i++)
         cum[i] = cum[i-1] + particles[i].weight;
 
-    // Stochastic universal sampling
     std::uniform_real_distribution<double> start_dist(0.0, 1.0 / n_resample);
     double start = start_dist(rng);
     int    idx   = 0;
@@ -232,7 +201,6 @@ void MCL::resample()
         next.push_back(particles[idx]);
     }
 
-    // Random injection for diversity / recovery
     if (!free_cells.empty()) {
         std::uniform_int_distribution<int>    cell_dist(0, (int)free_cells.size() - 1);
         std::uniform_real_distribution<double> angle_dist(-M_PI, M_PI);
@@ -247,17 +215,11 @@ void MCL::resample()
         }
     }
 
-    // Reset weights
     double w = 1.0 / (double)next.size();
     for (auto& p : next) p.weight = w;
 
     particles = std::move(next);
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// estimatePose — returns highest-weight particle
-// Best particle is safer than weighted mean for multimodal clouds
-// ─────────────────────────────────────────────────────────────────────────────
 
 MCL::Pose MCL::estimatePose() const
 {
@@ -267,15 +229,10 @@ MCL::Pose MCL::estimatePose() const
     return {best.x, best.y, best.fi};
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Diagnostics
-// ─────────────────────────────────────────────────────────────────────────────
-
 double MCL::particleVariance() const
 {
     if (particles.empty()) return 1e9;
 
-    // Only consider top 50% by weight
     std::vector<const Particle*> sorted;
     for (const auto& p : particles) sorted.push_back(&p);
     std::sort(sorted.begin(), sorted.end(),
