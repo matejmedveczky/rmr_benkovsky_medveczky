@@ -1,3 +1,5 @@
+//mcl.cpp
+
 #include "mcl.h"
 #include <algorithm>
 #include <climits>
@@ -38,8 +40,8 @@ void MCL::init(const Map& map)
 void MCL::deactivate()
 {
     active = false;
-    particles.clear();
-    free_cells.clear();
+    //particles.clear();
+    //free_cells.clear();
     cout << "[MCL] Deactivated - odometry takes over\n";
 }
 

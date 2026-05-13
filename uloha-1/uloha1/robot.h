@@ -130,15 +130,15 @@ class robot : public QObject {
   std::deque<PoseStamp> poseHistory;
 
   // Occupancy grid
-  static const int    GRID_SIZE = 280;
-  static constexpr double CELL_SIZE = 0.05;
+  //static const int    GRID_SIZE = 280;
+  //static constexpr double CELL_SIZE = 0.05;
 
-  static const int GRID_OFFSET_X = 140;
-  static const int GRID_OFFSET_Y = 140;
+  //static const int GRID_OFFSET_X = 140;
+  //static const int GRID_OFFSET_Y = 140;
 
-  int grid[GRID_SIZE][GRID_SIZE];
+  //int grid[GRID_SIZE][GRID_SIZE];
 
-  static const int BUFFER_SIZE = 5;
+  //static const int BUFFER_SIZE = 5;
 
   static constexpr float L_HIT =  0.85f;
   static constexpr float L_FREE  =  0.40f;
@@ -147,8 +147,8 @@ class robot : public QObject {
   static constexpr float THRESHOLD_OCC  =  0.5f;
   static constexpr float THRESHOLD_FREE = -0.5f;
 
-  double gridOriginX = -(GRID_SIZE * CELL_SIZE / 2.0);
-  double gridOriginY = -(GRID_SIZE * CELL_SIZE / 2.0);
+  //double gridOriginX = -(GRID_SIZE * CELL_SIZE / 2.0);
+  //double gridOriginY = -(GRID_SIZE * CELL_SIZE / 2.0);
 };
 
 #endif // ROBOT_H

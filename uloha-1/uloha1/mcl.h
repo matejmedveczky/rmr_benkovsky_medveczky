@@ -23,7 +23,7 @@ public:
     static const int    N_DEFAULT     = 300;
     static constexpr double VAR_HIGH      = 0.50;   // m² → grow N
     static constexpr double VAR_LOW       = 0.05;   // m² → shrink N
-    static constexpr double VAR_CONVERGED = 0.02;   // m² → done
+    static constexpr double VAR_CONVERGED = 0.01;   // m² → done
 
     // Motion noise (a1–a4 from probabilistic robotics)
     static constexpr double A1 = 0.10;   // rot  noise ← rotation

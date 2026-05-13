@@ -1,9 +1,13 @@
- #include "robot.h"
+//robot.cpp
+
+#include "robot.h"
  #include <cmath>
  #include <cstring>
  #include <queue>
  #include "map.h"
  #include "mcl.h"
+ #include <algorithm>
+ using namespace std;
 
 
 
@@ -45,8 +49,6 @@
      x_des = 0;
      y_des = 0;
 
-     memset(grid, 0, sizeof(grid));
-
      robotCom.setLaserParameters([this](const std::vector<LaserData>& dat)->int{return processThisLidar(dat);},ipaddress);
      robotCom.setRobotParameters([this](const TKobukiData& dat)->int{return processThisRobot(dat);},ipaddress);
  #ifndef DISABLE_OPENCV
@@ -65,8 +67,6 @@
      useDirectCommands=0;
  }
 
-
-
  void robot::loadMap(const std::string& filename)
  {
      cout << "Loading Map\n";
@@ -84,9 +84,6 @@
      cout << "Map saved\n\n";
  }
 
-
-
-
  void robot::setSpeed(double forw, double rots)
  {
      if(forw==0 && rots!=0)
@@ -101,9 +98,6 @@
  }
 
  void robot::resetRobot(){
-     // x = 0;
-     // y = 0;
-     // fi = 0;
      x_des = 0.0;
      y_des = 0.0;
      path_point = 0;
@@ -172,8 +166,8 @@
 
      if (mcl.isActive()) {
          mcl.motionUpdate(step_dist, delta_fi);
-         auto pose = mcl.estimatePose();
-         x = pose.x;  y = pose.y;  fi = pose.fi;
+         // do NOT call estimatePose here — weights are equal post-resample
+         // x,y,fi stays at last good LIDAR-based estimate
      } else {
          fi += delta_fi;
          while(fi >  M_PI) fi -= 2*M_PI;
@@ -236,43 +230,63 @@
          }
      }
 
-     prev_v = v;
-     prev_w = w;
-
      if (mcl.isActive()) {
-         double var = mcl.particleVariance();
-         double confidence = std::exp(-var / MCL::VAR_HIGH);
-         v = v * confidence;
-         v = std::clamp(v, -80.0, 80.0);
-         w = std::clamp(w, -0.2, 0.2);
-     }
-     else {
-         v = std::clamp(v, -400.0, 400.0);
-         w = std::clamp(w, -0.5, 0.5);
-     }
-
-     if (!copyOfLaserData.empty() && mcl.isActive()) {
-         // Check forward cone (±30°) and sides
+         // ignore navigation entirely — just explore
          float min_front = 2.5f, min_left = 2.5f, min_right = 2.5f;
          for (const auto& p : copyOfLaserData) {
              float d = p.scanDistance / 1000.0f;
              if (d < 0.05f || d > 2.5f) continue;
              float a = p.scanAngle;
              if      (a < 30  || a > 330) min_front = std::min(min_front, d);
-             else if (a >= 30 && a < 180) min_left  = std::min(min_left,  d);
-             else                          min_right = std::min(min_right, d);
+             else if (a >= 30 && a < 180) min_right  = std::min(min_right,  d);
+             else                          min_left = std::min(min_left, d);
          }
 
-         const float STOP_DIST  = 0.40f;  // m — hard stop
-         const float SLOW_DIST  = 0.80f;  // m — start slowing
-
-         if (min_front < STOP_DIST) {
+         if (min_front < 0.3f) {
              v = 0;
-             w = (min_left > min_right) ? 0.4 : -0.4;
-         } else if (min_front < SLOW_DIST) {
-             v *= (min_front - STOP_DIST) / (SLOW_DIST - STOP_DIST);
+             w = (min_left > min_right) ? 0.3f : -0.3f;
+         } else {
+             v = 40.0;
+             w = (min_left - min_right) * 0.3f;
+             w = std::clamp(w, -0.3, 0.3);
          }
+
+     } else {
+         // normal navigation controller
+         bool is_last_waypoint = path.empty() || path_point >= (int)path.size() - 1;
+         double tolerance = is_last_waypoint ? 0.02 : 0.15;
+
+         if (err_lin < tolerance) {
+             if (is_last_waypoint) {
+                 v = 0; w = 0;
+             } else {
+                 path_point++;
+                 auto [next_x, next_y] = path[path_point];
+                 this->x_des = next_x;
+                 this->y_des = next_y;
+                 cout << "Advancing to waypoint " << path_point
+                      << ": (" << this->x_des << "," << this->y_des << ")\n";
+             }
+         } else {
+             if (std::abs(err_ang) > 0.9) {
+                 v = 0;
+                 w = Kp_ang * err_ang;
+             } else {
+                 v = Kp_lin * err_lin * 1000.0;
+                 w = Kp_ang * err_ang;
+             }
+
+             if ((v - prev_v) > 5)         v = prev_v + 5;
+             if ((w - prev_w) > 0.05)      w = prev_w + 0.05;
+             else if ((w - prev_w) < -0.05) w = prev_w - 0.05;
+         }
+
+         v = std::clamp(v, -400.0, 400.0);
+         w = std::clamp(w, -0.5, 0.5);
      }
+
+     prev_v = v;
+     prev_w = w;
 
      setSpeedVal(v, w);
 
@@ -310,18 +324,18 @@
      auto pose = mcl.estimatePose();
 
      if (mcl.isActive()) {
-         mcl.weightUpdate(laserData);
-         mcl.resample();
+         mcl.weightUpdate(laserData);       // 1. score particles
+         auto pose = mcl.estimatePose();    // 2. read best particle NOW
+         x = pose.x; y = pose.y; fi = pose.fi;  // 3. write pose
+         mcl.resample();                    // 4. resample AFTER writing pose
 
-         x = pose.x;  y = pose.y;  fi = pose.fi;
          if (mcl.hasConverged()) {
              mcl_converged_streak++;
              cout << "[MCL] Converge streak: " << mcl_converged_streak
                   << "/" << MCL_CONVERGE_REQUIRED << "\n";
 
              if (mcl_converged_streak >= MCL_CONVERGE_REQUIRED) {
-                 auto pose = mcl.estimatePose();
-                 x = pose.x;  y = pose.y;  fi = pose.fi;
+                 x = pose.x; y = pose.y; fi = pose.fi;
                  mcl.deactivate();
                  mcl_converged_streak = 0;
                  setDesiredPosition(0.0, 0.0);
@@ -338,7 +352,8 @@
          cout << "\n--- MCL ---";
          cout << "\nParticles:  " << mcl.particleCount() << " | Variance: " << var;
          cout << "\nBest pose:  x=" << pose.x << " y=" << pose.y << " fi=" << pose.fi;
-         cout << "\nConverged:  " << (var < MCL::VAR_CONVERGED ? "YES" : "NO")
+         cout << "\nConverged:  " << (mcl.hasConverged() ? "YES" : "NO")
+              << " (streak " << mcl_converged_streak << "/" << MCL_CONVERGE_REQUIRED << ")"
               << " | Dist to start: "
               << std::sqrt(std::pow(x_des - pose.x, 2) + std::pow(y_des - pose.y, 2));
          cout << "\n-----------\n" << std::endl;
