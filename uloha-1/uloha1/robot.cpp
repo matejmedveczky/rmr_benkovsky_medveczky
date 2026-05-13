@@ -166,8 +166,6 @@
 
      if (mcl.isActive()) {
          mcl.motionUpdate(step_dist, delta_fi);
-         // do NOT call estimatePose here — weights are equal post-resample
-         // x,y,fi stays at last good LIDAR-based estimate
      } else {
          fi += delta_fi;
          while(fi >  M_PI) fi -= 2*M_PI;
@@ -231,7 +229,6 @@
      }
 
      if (mcl.isActive()) {
-         // ignore navigation entirely — just explore
          float min_front = 2.5f, min_left = 2.5f, min_right = 2.5f;
          for (const auto& p : copyOfLaserData) {
              float d = p.scanDistance / 1000.0f;
@@ -242,19 +239,17 @@
              else                          min_left = std::min(min_left, d);
          }
 
-         if (min_front < 0.3f) {
+         if (min_front < 0.7f) {
              v = 0;
-             w = (min_left > min_right) ? 0.3f : -0.3f;
+             w = (min_left > min_right) ? 0.7f : -0.7f;
          } else {
-             v = 40.0;
+             v = 80.0;
              w = (min_left - min_right) * 0.3f;
              w = std::clamp(w, -0.3, 0.3);
          }
 
      } else {
-         // normal navigation controller
          if (!mcl.isActive()) {
-             // Unexpected wall detection
              int col, row;
              map.worldToGrid(x, y, col, row);
              bool map_expects_wall = (col >= 0 && col < Map::GRID_SIZE &&
@@ -266,12 +261,21 @@
                  float d = p.scanDistance / 1000.0f;
                  if (d > 2.5f) continue;
                  float a = p.scanAngle;
-                 if (a > 40 && a < 320) continue;  // only ±30° forward cone
+                 if (a > 40 && a < 320) continue;
                  min_any = std::min(min_any, d);
              }
 
-             if (min_any < 0.25f ) { //&& !map_expects_wall
-                 cout << "[MCL] Unexpected wall at " << min_any << "m - reinitializing\n";
+             int close_count = 0;
+             for (const auto& p : copyOfLaserData) {
+                 float d = p.scanDistance / 1000.0f;
+                 if (d < 0.05f || d > 2.5f) continue;
+                 float a = p.scanAngle;
+                 if (a > 30 && a < 330) continue;
+                 if (d < 0.25f) close_count++;
+             }
+
+             if (close_count >= 5) {
+                 cout << "[MCL] Unexpected wall - " << close_count << " points under 25cm - reinitializing\n";
                  mcl.reinit();
                  mcl_converged_streak = 0;
              }
