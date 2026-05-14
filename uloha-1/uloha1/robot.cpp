@@ -299,6 +299,10 @@
              v *= (min_front - STOP_DIST) / (SLOW_DIST - STOP_DIST);
          }
 
+         v = std::clamp(v, -80.0, 80.0);
+         w = std::clamp(w, -0.4, 0.4);
+
+
       } else {
           int close_count = 0;
           int front_block_count = 0;
@@ -329,20 +333,28 @@
               std::lock_guard<std::mutex> lock(mclMutex);
               if (!mcl.isActive()) {
                   evaluated_reinit = true;
-                  int col, row;
-                  map.worldToGrid(x, y, col, row);
-                  map_expects_wall = false;
-                  if (col >= 0 && col < Map::GRID_SIZE && row >= 0 && row < Map::GRID_SIZE) {
-                      const int CHECK_RADIUS = 4;
-                      for (int dr = -CHECK_RADIUS; dr <= CHECK_RADIUS && !map_expects_wall; dr++) {
-                          for (int dc = -CHECK_RADIUS; dc <= CHECK_RADIUS && !map_expects_wall; dc++) {
-                              int nr = row + dr, nc = col + dc;
-                              if (nr >= 0 && nr < Map::GRID_SIZE && nc >= 0 && nc < Map::GRID_SIZE) {
-                                  if (map.grid[nr][nc] == Map::OCCUPIED || map.grid[nr][nc] == Map::BUFFER) {
-                                      map_expects_wall = true;
-                                  }
-                              }
-                          }
+                  // Check if close front lidar points correspond to map walls
+                  // If any close point's hit cell is NOT a map wall -> unexpected obstacle
+                  map_expects_wall = true;  // assume expected until proven otherwise
+                  for (const auto& p : copyOfLaserData) {
+                      float d = p.scanDistance / 1000.0f;
+                      if (d < 0.05f || d > 0.35f) continue;  // only check close points
+                      float a = p.scanAngle;
+                      if (a > 30 && a < 330) continue;  // front arc only
+
+                      // Compute hit position in world coordinates
+                      double angle_rad = a * M_PI / 180.0;
+                      double global_angle = fi - angle_rad;
+                      double hit_x = x + d * std::cos(global_angle);
+                      double hit_y = y + d * std::sin(global_angle);
+
+                      int col, row;
+                      map.worldToGrid(hit_x, hit_y, col, row);
+                      bool is_map_wall = (col >= 0 && col < Map::GRID_SIZE && row >= 0 && row < Map::GRID_SIZE &&
+                                          (map.grid[row][col] == Map::OCCUPIED || map.grid[row][col] == Map::BUFFER));
+                      if (!is_map_wall) {
+                          map_expects_wall = false;  // unexpected obstacle detected
+                          break;
                       }
                   }
 
