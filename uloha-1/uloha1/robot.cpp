@@ -278,31 +278,25 @@
           mcl_active = mcl.isActive();
       }
 
-      if (mcl_active) {
+      if (mcl.isActive()) {
           float min_front = 2.5f, min_left = 2.5f, min_right = 2.5f;
           for (const auto& p : copyOfLaserData) {
-             float d = p.scanDistance / 1000.0f;
-             if (d < 0.05f || d > 2.5f) continue;
-             float a = p.scanAngle;
-             if      (a < 30  || a > 330) min_front = std::min(min_front, d);
-             else if (a >= 30 && a < 180) min_left  = std::min(min_left,  d);
-             else                          min_right = std::min(min_right, d);
-         }
+              float d = p.scanDistance / 1000.0f;
+              if (d < 0.05f || d > 2.5f) continue;
+              float a = p.scanAngle;
+              if      (a < 30  || a > 330) min_front = std::min(min_front, d);
+              else if (a >= 30 && a < 180) min_right  = std::min(min_right,  d);
+              else                          min_left = std::min(min_left, d);
+          }
 
-         const float STOP_DIST  = 0.40f;  // m — hard stop
-         const float SLOW_DIST  = 0.80f;  // m — start slowing
-
-         if (min_front < STOP_DIST) {
-             v = 0;
-             w = (min_left > min_right) ? 0.4 : -0.4;
-         } else if (min_front < SLOW_DIST) {
-             v *= (min_front - STOP_DIST) / (SLOW_DIST - STOP_DIST);
-         }
-
-         v = std::clamp(v, -80.0, 80.0);
-         w = std::clamp(w, -0.4, 0.4);
-
-
+          if (min_front < 0.7f) {
+              v = 0;
+              w = (min_left > min_right) ? 0.7f : -0.7f;
+          } else {
+              v = 80.0;
+              w = (min_left - min_right) * 0.3f;
+              w = std::clamp(w, -0.3, 0.3);
+          }
       } else {
           int close_count = 0;
           int front_block_count = 0;
