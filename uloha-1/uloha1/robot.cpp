@@ -1,4 +1,3 @@
-//robot.cpp
 
 #include "robot.h"
  #include <cmath>
@@ -12,7 +11,7 @@
 
 
 /*
- * Store pairs as {x, y}, access grid as grid[y][x].
+ * Pairs as {x, y}, grid as grid[y][x].
 */
 
  robot::robot(QObject *parent) : QObject(parent)
@@ -39,8 +38,8 @@
      angle_old = 0.0;
      old_timestamp = 0.0;
 
-     x = 0;
-     y = 0;
+     x = 0; //120 * map.CELL_SIZE;
+     y = 0; //-137 * map.CELL_SIZE;;
      fi = 0;
 
      prev_v = 0.0;
@@ -105,7 +104,9 @@
  }
 
  void robot::returnHome(){
-     setDesiredPosition(0.0, 0.0);
+     double ret_x = 1.20;
+     double ret_y = -1.37;;
+     setDesiredPosition(ret_x, ret_y);
  }
 
  void robot::setDesiredPosition(double x_des, double y_des)
@@ -195,6 +196,7 @@
      if(err_lin < tolerance) {
          if(is_last_waypoint) {
              v = 0; w = 0;
+             setDesiredPosition(0.0, 0.0);
          } else {
              path_point++;
              auto [next_grid_x, next_grid_y] = path[path_point];
@@ -241,7 +243,7 @@
 
          if (min_front < 0.7f) {
              v = 0;
-             w = (min_left > min_right) ? 0.7f : -0.7f;
+             w = (min_left > min_right) ? 0.5f : -0.5f;
          } else {
              v = 80.0;
              w = (min_left - min_right) * 0.3f;
@@ -371,7 +373,7 @@
                  x = pose.x; y = pose.y; fi = pose.fi;
                  mcl.deactivate();
                  mcl_converged_streak = 0;
-                 setDesiredPosition(0.0, 0.0);
+                 returnHome();
              }
          } else {
              mcl_converged_streak = 0;

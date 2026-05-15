@@ -18,7 +18,6 @@ void MCL::init(const Map& map)
 {
     map_ptr = &map;
 
-    // Cache free cells — used for initial scatter and random injection
     free_cells.clear();
     for (int r = 0; r < GRID_SIZE; r++)
         for (int c = 0; c < GRID_SIZE; c++)
@@ -179,7 +178,7 @@ void MCL::resample()
     if (!active || particles.empty()) return;
 
     double var = particleVariance();
-    double inject_ratio = std::clamp(var / VAR_HIGH, 0.01, 0.05);  // 1-5%
+    double inject_ratio = std::clamp(var / VAR_HIGH, 0.01, 0.05); 
     int n_random   = std::max(1, (int)(N * inject_ratio));
     int n_resample = N - n_random;
 
@@ -251,7 +250,6 @@ MCL::Pose MCL::estimatePose() const
     const auto& best = *std::max_element(particles.begin(), particles.end(),
                                          [](const Particle& a, const Particle& b){ return a.weight < b.weight; });
 
-    // Count neighbors within 0.5m
     int neighbors = 0;
     for (const auto& p : particles) {
         double dx = p.x - best.x, dy = p.y - best.y;
@@ -259,7 +257,7 @@ MCL::Pose MCL::estimatePose() const
     }
 
     if (neighbors < 5) {
-        last_pose_valid = false;  // signal to caller: don't use this
+        last_pose_valid = false;
         return {best.x, best.y, best.fi};
     }
 
