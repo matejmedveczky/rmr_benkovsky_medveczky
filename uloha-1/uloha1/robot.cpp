@@ -277,7 +277,7 @@
              int ny = start_y + dy[i];
 
              bool is_turn = (dx[i] != cur_dx || dy[i] != cur_dy);
-             int turn_penalty = is_turn ? 3 : 0;  // tune this value
+             int turn_penalty = is_turn ? 3 : 0;
 
              if(nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE){
                  if(grid[ny][nx] >= 4){
