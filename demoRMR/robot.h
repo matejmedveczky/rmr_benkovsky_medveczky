@@ -86,8 +86,8 @@ private:
   double max_v_dt = 400/2;
   // double integral_lin = 0, integral_ang = 0;
 
-  double robotRadius = 0.18;      // približne polovica šírky robota + rezerva [m]
-  double safetyMargin = 0.05;     // bezpečnostná rezerva [m]
+  double robotRadius = 0.18;
+  double safetyMargin = 0.05;
 
   /// uloha 2 ///
 

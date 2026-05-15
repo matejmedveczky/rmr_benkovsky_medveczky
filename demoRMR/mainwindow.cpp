@@ -55,9 +55,6 @@ void MainWindow::paintEvent(QPaintEvent *event)
 
     painter.drawRect(rect);
 
-    // =========================
-    // KRESLENIE HISTOGRAMU
-    // =========================
     if(!maskedHistogramUi.empty())
     {
         int sectorCount = static_cast<int>(maskedHistogramUi.size());
@@ -79,11 +76,11 @@ void MainWindow::paintEvent(QPaintEvent *event)
             QColor fillColor;
 
             if(i < binaryHistogramUi.size() && binaryHistogramUi[i] == 1)
-                fillColor = QColor(255, 0, 0, 90);         // obsadené prekážkou
+                fillColor = QColor(255, 0, 0, 90);
             else if(i < maskedHistogramUi.size() && maskedHistogramUi[i] == 1)
-                fillColor = QColor(255, 255, 0, 90);       // voľné, ale zamaskované
+                fillColor = QColor(255, 255, 0, 90);
             else
-                fillColor = QColor(0, 255, 0, 90);         // voľné
+                fillColor = QColor(0, 255, 0, 90);
 
             painter.setPen(Qt::NoPen);
             painter.setBrush(fillColor);
@@ -100,8 +97,6 @@ void MainWindow::paintEvent(QPaintEvent *event)
                             2 * radiusInner,
                             2 * radiusInner);
 
-            // Qt: 0° je doprava
-            // ty chceš 0° dopredu
             double qtStartDeg = 90.0 - endDeg;
             double qtSpanDeg  = sectorSizeDeg;
 
